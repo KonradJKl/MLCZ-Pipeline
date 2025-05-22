@@ -108,11 +108,11 @@ def run_training():
 
 
 if __name__ == '__main__':
-    """
+
     print("\nConverting Data")
     convert_data.load_data(input_data_path=os.environ['SRC'],
                            output_lmdb_path=os.environ['LMDB'],
                            output_parquet_path=os.environ['PARQUET'])
     print("\nData conversion completed")
-    """
-    run_training()
+
+    #run_training()

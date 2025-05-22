@@ -4,6 +4,7 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 from torchmetrics import MetricCollection, JaccardIndex, Accuracy, F1Score
+from torchmetrics.segmentation import DiceScore
 
 from typing import Any, Dict, List, Tuple
 
@@ -206,29 +207,6 @@ class BaseModel(L.LightningModule):
 
     def test_dataloader(self):
         return self.datamodule.test_dataloader()
-
-    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> torch.Tensor:
-        """Prediction step for inference"""
-        x, _ = batch if isinstance(batch, (tuple, list)) else (batch, None)
-
-        logits = self(x)
-        if isinstance(logits, dict):
-            logits = logits['out']
-
-        preds = torch.argmax(logits, dim=1)
-        return preds
-
-    def configure_callbacks(self) -> List[Any]:
-        """Configure additional callbacks if needed"""
-        callbacks = []
-
-        # Add gradient clipping if specified
-        if hasattr(self.args, 'gradient_clip_val') and self.args.gradient_clip_val > 0:
-            from lightning.pytorch.callbacks import GradientAccumulationScheduler
-            # Note: Gradient clipping is typically handled in trainer config
-            pass
-
-        return callbacks
 
     def on_before_optimizer_step(self, optimizer, optimizer_idx=0):
         """Called before optimizer step - useful for gradient monitoring"""
