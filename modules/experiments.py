@@ -2,7 +2,7 @@ import argparse
 import torch
 import os
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
 from torchvision import transforms
 from base import BaseModel
@@ -22,17 +22,18 @@ parser.add_argument('--metadata_parquet_path', type=str)
 parser.add_argument('--num_channels', type=int, default=12, required=True)
 parser.add_argument('--num_classes', type=int, default=17, required=True)
 parser.add_argument('--num_workers', type=int, default=4)
-parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument('--batch_size', type=int, default=16)
 
 parser.add_argument('--arch_name', type=str, choices=["ResNet18", "unet", "CustomCNN", "ConvNeXt-Nano", "ViT-Tiny"], required=True)
 parser.add_argument('--pretrained', action='store_true')
 parser.add_argument('--dropout', action='store_true')
 parser.add_argument('--epochs', type=int, default=5)
-parser.add_argument('--learning_rate', type=float, default=0.0001)
-parser.add_argument('--weight_decay', type=float, default=0.00001)
+parser.add_argument('--learning_rate', type=float, default=0.0005)
+parser.add_argument('--weight_decay', type=float, default=0.0001)
 parser.add_argument('--resize', action='store_true')
 parser.add_argument('--augmentation', type=str, default=None)
 parser.add_argument('--pretraining', action='store_true')
+parser.add_argument('--class_weights', action='store_true')
 
 
 def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger, resize=None):
@@ -72,18 +73,22 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger, resize=
     )
     early_stopping_callback = EarlyStopping(
         monitor="val_iou_macro",
-        patience=5,
+        patience=15,
         mode="max",
-        verbose=True
+        verbose=True,
+        min_delta=0.001
     )
+
+    lr_monitor = LearningRateMonitor(logging_interval="step")
 
     trainer = Trainer(
         max_epochs=args.epochs,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        callbacks=[checkpoint_callback, early_stopping_callback],
+        callbacks=[checkpoint_callback, early_stopping_callback, lr_monitor],
         logger=logger,
         deterministic="warn",
-        gradient_clip_val=1.0
+        gradient_clip_val=1.0,
+        gradient_clip_algorithm="norm"
     )
 
     model = BaseModel(
