@@ -49,20 +49,21 @@ def get_network(arch_name: str, num_channels: int, num_classes: int, pretrained:
         model = timm.create_model("resnet18", pretrained=pretrained, num_classes=num_classes, in_chans=num_channels, drop_rate=drop_rate)
     elif arch_name == "unet":
         model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet" if pretrained else None, in_channels=num_channels, classes=num_classes)
+        """
+        model = smp.DeepLabV3Plus(
+            encoder_name="efficientnet-b2",
+            encoder_weights="imagenet",
+            in_channels=num_channels,
+            classes=num_classes,
+            activation=None,
+            encoder_output_stride=16,
+            decoder_channels=256,
+            decoder_atrous_rates=(12, 24, 36),
+            upsampling=4
+        )
+        """
     elif arch_name == "CustomCNN":
         model = CustomCNN(num_classes=num_classes, num_channels=num_channels, dropout=dropout)
-    elif arch_name == "ConvNeXt-Nano":
-        model = timm.create_model("convnext_nano", pretrained=pretrained, num_classes=num_classes, in_chans=num_channels, drop_rate=drop_rate)
-    elif arch_name == "ViT-Tiny":
-        model = timm.create_model(
-            'vit_tiny_patch16_224',
-            patch_size=8,
-            img_size=112,
-            pretrained=pretrained,
-            num_classes=num_classes,
-            in_chans=num_channels,
-            drop_rate=drop_rate
-        )
     else:
         raise ValueError(f"Unsupported architecture name: {arch_name}")
     return model

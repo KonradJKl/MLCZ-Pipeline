@@ -84,16 +84,16 @@ def architecture_experiments(base_command, base_path):  # **Architecture Experim
 def run_training():
     seed_everything(42)
     base_path = Path.cwd() / "untracked-files"
-    lmdb_path = base_path / "MLCZ.lmdb"  # untracked-files/EuroSAT.lmdb
-    parquet_path = base_path / "MLCZ.parquet"  # untracked-files/EuroSAT.parquet
-    logs_dir = Path.cwd() / "logs"  # "attachments" /
+    lmdb_path = base_path / "MLCZ.lmdb"
+    parquet_path = base_path / "MLCZ.parquet"
+    logs_dir = Path.cwd() / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     assert lmdb_path.exists(), f"LMDB path does not exist: {lmdb_path}"
     assert parquet_path.exists(), f"Parquet path does not exist: {parquet_path}"
 
     base_command = [
-        "python", "modules/experiments.py",  # "poetry", "run", "python"
+        "python", "modules/experiments.py",
         "--logging_dir", str(logs_dir),
         "--logger", "wandb",
         "--num_workers", "4",

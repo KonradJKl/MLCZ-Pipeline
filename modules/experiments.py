@@ -7,6 +7,7 @@ from lightning.pytorch.loggers import WandbLogger
 from torchvision import transforms
 from base import BaseModel
 from model import get_network
+from visualiztion import LCZVisualizer, visualize_model_predictions
 from MLCZ import MLCZDataModule
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
@@ -19,24 +20,22 @@ parser.add_argument('--dataset', default='MLCZ', type=str, required=True)
 parser.add_argument('--lmdb_path', type=str)
 parser.add_argument('--metadata_parquet_path', type=str)
 
-parser.add_argument('--num_channels', type=int, default=12, required=True)
-parser.add_argument('--num_classes', type=int, default=17, required=True)
+parser.add_argument('--num_channels', type=int, default=18, required=True)
+parser.add_argument('--num_classes', type=int, default=244, required=True)
 parser.add_argument('--num_workers', type=int, default=4)
-parser.add_argument('--batch_size', type=int, default=16)
+parser.add_argument('--batch_size', type=int, default=32)
 
-parser.add_argument('--arch_name', type=str, choices=["ResNet18", "unet", "CustomCNN", "ConvNeXt-Nano", "ViT-Tiny"], required=True)
+parser.add_argument('--arch_name', type=str, choices=["unet", "CustomCNN"], required=True)
 parser.add_argument('--pretrained', action='store_true')
 parser.add_argument('--dropout', action='store_true')
 parser.add_argument('--epochs', type=int, default=5)
 parser.add_argument('--learning_rate', type=float, default=0.0005)
 parser.add_argument('--weight_decay', type=float, default=0.0001)
-parser.add_argument('--resize', action='store_true')
 parser.add_argument('--augmentation', type=str, default=None)
-parser.add_argument('--pretraining', action='store_true')
 parser.add_argument('--class_weights', action='store_true')
 
 
-def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger, resize=None):
+def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
     if dataset == "MLCZ":
         datamodule = MLCZDataModule(
             batch_size=args.batch_size,
@@ -58,14 +57,6 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger, resize=
         dropout=dropout,
     )
 
-    if resize:
-        transform = transforms.Compose([
-            transforms.Resize((112, 112)),
-            datamodule.train_dataset.transform,
-        ])
-        datamodule.train_dataset.transform = transform
-        datamodule.val_dataset.transform = transform
-        datamodule.test_dataset.transform = transform
     checkpoint_callback = ModelCheckpoint(
         monitor="val_iou_macro",
         save_top_k=1,
@@ -98,7 +89,48 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger, resize=
     )
 
     trainer.fit(model)
-    trainer.test(model, ckpt_path="best")
+    test_results = trainer.test(model, ckpt_path="best")
+
+    # Generate visualizations if requested
+
+    print("\n" + "="*50)
+    print("GENERATING VISUALIZATIONS")
+    print("="*50)
+
+    # Create visualizer
+    visualizer = LCZVisualizer(save_dir=os.path.join(args.logging_dir, "visualizations"))
+
+    # Generate visualizations on test set
+    experiment_name = f"{args.dataset}_{args.arch_name}_pt={args.pretrained}_do={args.dropout}"
+
+    # Load best checkpoint for visualization
+    best_model = BaseModel.load_from_checkpoint(
+        checkpoint_callback.best_model_path,
+        args=args,
+        datamodule=datamodule,
+        network=network
+    )
+
+    metrics = visualize_model_predictions(
+        best_model,
+        datamodule.test_dataloader(),
+        visualizer,
+        experiment_name,
+        device='cuda' if torch.cuda.is_available() else 'cpu',
+        max_batches=20  # Process more batches for better statistics
+    )
+
+    # Log metrics to wandb if using wandb logger
+    if args.logger == "wandb" and logger:
+        logger.log_metrics({
+            "test/accuracy": metrics['accuracy'],
+            "test/macro_f1": metrics['macro_f1'],
+            "test/weighted_f1": metrics['weighted_f1'],
+            "test/macro_precision": metrics['macro_precision'],
+            "test/macro_recall": metrics['macro_recall']
+        })
+
+    return test_results
 
 
 if __name__ == "__main__":
@@ -110,4 +142,4 @@ if __name__ == "__main__":
         group=arguments.dataset,
         name=f"{arguments.dataset}_{arguments.arch_name}_pt={arguments.pretrained}_do={arguments.dropout}" if arguments.augmentation is None else f"{arguments.dataset}_{arguments.augmentation}"
     )
-    run_benchmark(arguments, arguments.arch_name, arguments.pretrained, arguments.dropout, arguments.dataset, logger, arguments.resize)
+    run_benchmark(arguments, arguments.arch_name, arguments.pretrained, arguments.dropout, arguments.dataset, logger)
