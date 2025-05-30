@@ -217,7 +217,7 @@ def align_raster_to_target(src_path, target_transform, target_crs, target_width,
             return aligned_data
 
 
-def create_lmdb_with_alignment(city_to_files_paths, output_lmdb_path, patch_size=64, stride=32, map_size=6.5e10):
+def create_lmdb_with_alignment(city_to_files_paths, output_lmdb_path, patch_size=64, stride=32, map_size=6.5e10, batch_size=500):
     """
     Create LMDB with proper spatial alignment of all rasters.
 
