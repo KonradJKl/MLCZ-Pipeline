@@ -116,7 +116,7 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
         datamodule.test_dataloader(),
         visualizer,
         experiment_name,
-        device='cuda' if torch.cuda.is_available() else 'cpu',
+        device=torch.cuda.get_device_name(0),
         max_batches=20  # Process more batches for better statistics
     )
 

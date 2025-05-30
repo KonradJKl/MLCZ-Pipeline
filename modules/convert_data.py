@@ -7,6 +7,7 @@ import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.windows import from_bounds, Window
 from rasterio.merge import merge
+import gc
 import safetensors.numpy as stnp
 from sklearn.model_selection import train_test_split
 from pathlib import Path
@@ -227,115 +228,129 @@ def create_lmdb_with_alignment(city_to_files_paths, output_lmdb_path, patch_size
     :param map_size: max size in bytes for LMDB
     :return: list of keys written
     """
+
     keys = []
     env = lmdb.open(output_lmdb_path, map_size=int(map_size))
 
-    with env.begin(write=True) as txn:
-        for city, paths in city_to_files_paths.items():
-            print(f"\n🏙️  Processing city: {city}")
+    for city, paths in city_to_files_paths.items():
+        print(f"\n🏙️  Processing city: {city}")
 
-            # Assume order: [LCZ, PRISMA, S2] or sort by filename patterns
-            lcz_path = next((p for p in paths if 'lcz' in p.name.lower() or 'label' in p.name.lower()), paths[0])
-            prisma_path = next((p for p in paths if 'prisma' in p.name.lower()), paths[1])
-            s2_path = next((p for p in paths if 's2' in p.name.lower() or 'sentinel' in p.name.lower()), paths[2])
+        # Identify file paths (same as before)
+        lcz_path = next((p for p in paths if 'lcz' in p.name.lower() or 'label' in p.name.lower()), paths[0])
+        prisma_path = next((p for p in paths if 'prisma' in p.name.lower()), paths[1])
+        s2_path = next((p for p in paths if 's2' in p.name.lower() or 'sentinel' in p.name.lower()), paths[2])
 
-            print(f"  📁 Files identified:")
-            print(f"    LCZ: {lcz_path.name}")
-            print(f"    PRISMA: {prisma_path.name}")
-            print(f"    S2: {s2_path.name}")
+        print(f"  📁 Files identified:")
+        print(f"    LCZ: {lcz_path.name}")
+        print(f"    PRISMA: {prisma_path.name}")
+        print(f"    S2: {s2_path.name}")
 
-            # Check spatial alignment
-            alignment_info = check_spatial_alignment(lcz_path, prisma_path, s2_path, city)
+        # Check spatial alignment
+        alignment_info = check_spatial_alignment(lcz_path, prisma_path, s2_path, city)
 
-            if alignment_info['needs_alignment']:
-                print(f"  🔧 Aligning rasters...")
+        # Load and align data
+        if alignment_info['needs_alignment']:
+            print(f"  🔧 Aligning rasters...")
+            lcz_aligned = align_raster_to_target(
+                lcz_path,
+                alignment_info['target_transform'],
+                alignment_info['target_crs'],
+                alignment_info['target_width'],
+                alignment_info['target_height']
+            )
+            prisma_aligned = align_raster_to_target(
+                prisma_path,
+                alignment_info['target_transform'],
+                alignment_info['target_crs'],
+                alignment_info['target_width'],
+                alignment_info['target_height']
+            )
+            s2_aligned = align_raster_to_target(
+                s2_path,
+                alignment_info['target_transform'],
+                alignment_info['target_crs'],
+                alignment_info['target_width'],
+                alignment_info['target_height']
+            )
+        else:
+            print(f"  ✅ Rasters already aligned, reading directly...")
+            with rasterio.open(lcz_path) as src:
+                lcz_aligned = src.read()
+            with rasterio.open(prisma_path) as src:
+                prisma_aligned = src.read()
+            with rasterio.open(s2_path) as src:
+                s2_aligned = src.read()
 
-                # Align all rasters to common spatial reference
-                lcz_aligned = align_raster_to_target(
-                    lcz_path,
-                    alignment_info['target_transform'],
-                    alignment_info['target_crs'],
-                    alignment_info['target_width'],
-                    alignment_info['target_height']
-                )
+        H, W = lcz_aligned.shape[1], lcz_aligned.shape[2]
+        print(f"  🔪 Creating patches from {H}x{W} aligned rasters...")
 
-                prisma_aligned = align_raster_to_target(
-                    prisma_path,
-                    alignment_info['target_transform'],
-                    alignment_info['target_crs'],
-                    alignment_info['target_width'],
-                    alignment_info['target_height']
-                )
+        # Create coordinates for patches
+        coords = [
+            (r, c)
+            for r in range(0, H - patch_size + 1, stride)
+            for c in range(0, W - patch_size + 1, stride)
+        ]
 
-                s2_aligned = align_raster_to_target(
-                    s2_path,
-                    alignment_info['target_transform'],
-                    alignment_info['target_crs'],
-                    alignment_info['target_width'],
-                    alignment_info['target_height']
-                )
+        # Process patches in batches to manage memory
+        valid_patches = 0
+        batch_data = []
 
-                print(f"  ✅ Alignment complete!")
-                print(f"    Final dimensions: {s2_aligned.shape}")
+        for idx, (row_off, col_off) in enumerate(tqdm(coords, desc=f"{city} patches", unit="patch")):
+            # Extract patches
+            s2_patch = s2_aligned[:, row_off:row_off + patch_size, col_off:col_off + patch_size]
+            prisma_patch = prisma_aligned[:, row_off:row_off + patch_size, col_off:col_off + patch_size]
+            lcz_patch = lcz_aligned[0, row_off:row_off + patch_size, col_off:col_off + patch_size]
 
-                # Use aligned data
-                H, W = lcz_aligned.shape[1], lcz_aligned.shape[2]
+            # Quality checks
+            if np.isnan(s2_patch).any() or np.isnan(prisma_patch).any() or np.isnan(lcz_patch).any():
+                continue
 
-            else:
-                print(f"  ✅ Rasters already aligned, reading directly...")
-                # Read data directly
-                with rasterio.open(lcz_path) as src:
-                    lcz_aligned = src.read()
-                with rasterio.open(prisma_path) as src:
-                    prisma_aligned = src.read()
-                with rasterio.open(s2_path) as src:
-                    s2_aligned = src.read()
+            if np.all(lcz_patch == 0):
+                continue
 
-                H, W = lcz_aligned.shape[1], lcz_aligned.shape[2]
+            # Combine spectral data
+            x = np.concatenate([s2_patch, prisma_patch], axis=0)
+            y = lcz_patch
 
-            # Verify dimensions match
-            assert lcz_aligned.shape[1:] == prisma_aligned.shape[1:] == s2_aligned.shape[1:], \
-                f"Dimension mismatch after alignment: LCZ={lcz_aligned.shape}, PRISMA={prisma_aligned.shape}, S2={s2_aligned.shape}"
+            key = f"{city}_{valid_patches:06d}_{row_off}_{col_off}"
+            keys.append(key)
 
-            print(f"  🔪 Creating patches from {H}x{W} aligned rasters...")
+            sample = {
+                'data': x.astype(np.float32),
+                'label': y.astype(np.int64)
+            }
 
-            # Create patches from aligned data
-            coords = [
-                (r, c)
-                for r in range(0, H - patch_size + 1, stride)
-                for c in range(0, W - patch_size + 1, stride)
-            ]
+            batch_data.append((key, sample))
+            valid_patches += 1
 
-            valid_patches = 0
-            for idx, (row_off, col_off) in enumerate(tqdm(coords, desc=f"{city} patches", unit="patch")):
-                # Extract patches
-                s2_patch = s2_aligned[:, row_off:row_off + patch_size, col_off:col_off + patch_size]
-                prisma_patch = prisma_aligned[:, row_off:row_off + patch_size, col_off:col_off + patch_size]
-                lcz_patch = lcz_aligned[0, row_off:row_off + patch_size, col_off:col_off + patch_size]  # Assume single band
+            # Commit batch when it reaches batch_size
+            if len(batch_data) >= batch_size:
+                with env.begin(write=True) as txn:
+                    for k, v in batch_data:
+                        txn.put(k.encode('ascii'), stnp.save(v))
+                batch_data = []
 
-                # Quality checks
-                if np.isnan(s2_patch).any() or np.isnan(prisma_patch).any() or np.isnan(lcz_patch).any():
-                    continue  # Skip patches with NaN values
+                # Force garbage collection
+                gc.collect()
 
-                if np.all(lcz_patch == 0):  # Skip patches with no labels
-                    continue
+                # Optional: print memory usage
+                if idx % 500 == 0:
+                    import psutil
+                    process = psutil.Process()
+                    memory_mb = process.memory_info().rss / 1024 / 1024
+                    print(f"    Memory usage: {memory_mb:.1f} MB")
 
-                # Combine spectral data
-                x = np.concatenate([s2_patch, prisma_patch], axis=0)
-                y = lcz_patch
+        # Commit remaining patches
+        if batch_data:
+            with env.begin(write=True) as txn:
+                for k, v in batch_data:
+                    txn.put(k.encode('ascii'), stnp.save(v))
 
-                key = f"{city}_{valid_patches:06d}_{row_off}_{col_off}"
-                keys.append(key)
+        print(f"  ✅ Created {valid_patches} valid patches for {city}")
 
-                sample = {
-                    'data': x.astype(np.float32),
-                    'label': y.astype(np.int64)
-                }
-
-                txn.put(key.encode('ascii'), stnp.save(sample))
-                valid_patches += 1
-
-            print(f"  ✅ Created {valid_patches} valid patches for {city}")
+        # Clean up city data from memory
+        del lcz_aligned, prisma_aligned, s2_aligned
+        gc.collect()
 
     env.close()
     print(f"\n🎉 Total patches created: {len(keys)}")
