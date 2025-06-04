@@ -409,7 +409,7 @@ def analyze_patch_labels(lmdb_path, keys):
     return patch_stats
 
 
-def create_metadata(keys, lmdb_path=None, stratify_by='mixed', split_strategy='hybrid'):
+def create_metadata(keys, stratify_by, split_strategy, lmdb_path=None):
     """
     Create flexible metadata for the dataset with various stratification options.
 

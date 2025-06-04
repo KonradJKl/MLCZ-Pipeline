@@ -112,7 +112,10 @@ if __name__ == '__main__':
     print("\nConverting Data")
     convert_data.load_data(input_data_path=os.environ['SRC'],
                            output_lmdb_path=os.environ['LMDB'],
-                           output_parquet_path=os.environ['PARQUET'])
+                           output_parquet_path=os.environ['PARQUET'],
+                           stratify_by = 'mixed',  # 'city', 'labels', 'mixed', or 'none'
+                           split_strategy = 'hybrid'  # 'city_based', 'patch_based', or 'hybrid'
+                           )
     print("\nData conversion completed")
 
     #run_training()

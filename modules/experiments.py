@@ -33,6 +33,11 @@ parser.add_argument('--learning_rate', type=float, default=0.0005)
 parser.add_argument('--weight_decay', type=float, default=0.0001)
 parser.add_argument('--augmentation', type=str, default=None)
 parser.add_argument('--class_weights', action='store_true')
+parser.add_argument('--train_cities', type=str, nargs='*', default=None, help='Cities to use for training')
+parser.add_argument('--val_cities', type=str, nargs='*', default=None, help='Cities to use for validation')
+parser.add_argument('--test_cities', nargs='*', default=None, help='Cities to use for testing')
+parser.add_argument('--label_filter', type=int, nargs='*', default=None, help='Label IDs to include')
+parser.add_argument('--min_label_diversity', default=None, help='Minimum label diversity per patch')
 
 
 def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
@@ -43,10 +48,14 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
             lmdb_path=args.lmdb_path,
             metadata_parquet_path=args.metadata_parquet_path,
             base_path=None,
+            train_cities=args.train_cities,
+            val_cities=args.val_cities,
+            test_cities=args.test_cities,
+            label_filter=args.label_filter,
+            min_label_diversity=args.min_label_diversity
         )
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
-
     datamodule.setup()
 
     network = get_network(
