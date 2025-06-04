@@ -35,7 +35,7 @@ parser.add_argument('--augmentation', type=str, default=None)
 parser.add_argument('--class_weights', action='store_true')
 parser.add_argument('--train_cities', type=str, nargs='*', default=None, help='Cities to use for training')
 parser.add_argument('--val_cities', type=str, nargs='*', default=None, help='Cities to use for validation')
-parser.add_argument('--test_cities', nargs='*', default=None, help='Cities to use for testing')
+parser.add_argument('--test_cities', type=str, nargs='*', default=None, help='Cities to use for testing')
 parser.add_argument('--label_filter', type=int, nargs='*', default=None, help='Label IDs to include')
 parser.add_argument('--min_label_diversity', default=None, help='Minimum label diversity per patch')
 
