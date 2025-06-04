@@ -16,7 +16,7 @@ import warnings
 BANDS = ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B09", "B10", "B11", "B12", "B8A"]
 
 
-def load_data(input_data_path: str, output_lmdb_path: str, output_parquet_path: str):
+def load_data(input_data_path: str, output_lmdb_path: str, output_parquet_path: str, stratify_by: str,  split_strategy: str):
     """
     Convert the given datasets to lmdb and parquet format with proper spatial alignment.
 
@@ -36,7 +36,7 @@ def load_data(input_data_path: str, output_lmdb_path: str, output_parquet_path: 
         print("\nAligning and creating LMDB...")
         keys = create_lmdb_with_alignment(city_to_files_paths, output_lmdb_path)
         print("\nCreating Metadata...")
-        metadata = create_metadata(keys)
+        metadata = create_metadata(keys, stratify_by, split_strategy)
         metadata.to_parquet(output_parquet_path)
 
 
