@@ -9,6 +9,9 @@ from base import BaseModel
 from model import get_network
 from visualiztion import LCZVisualizer, visualize_model_predictions
 from MLCZ import MLCZDataModule
+import albumentations as A  # Import albumentations
+from albumentations.pytorch import ToTensorV2  # Import ToTensorV2
+
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 parser = argparse.ArgumentParser(prog='MLCZ-Pipeline', description='Run Experiments.')
@@ -41,6 +44,16 @@ parser.add_argument('--min_label_diversity', default=None, help='Minimum label d
 
 
 def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
+    augmentation_transform = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45, p=0.5),
+    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+    ToTensorV2() # Convert image to PyTorch tensor and normalize
+  ])
+    
+    
     if dataset == "MLCZ":
         datamodule = MLCZDataModule(
             batch_size=args.batch_size,
@@ -48,6 +61,7 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
             lmdb_path=args.lmdb_path,
             metadata_parquet_path=args.metadata_parquet_path,
             base_path=None,
+            transform=augmentation_transform,
             train_cities=args.train_cities,
             val_cities=args.val_cities,
             test_cities=args.test_cities,

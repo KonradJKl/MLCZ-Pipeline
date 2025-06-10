@@ -2,6 +2,8 @@ import pandas as pd
 import lmdb
 import safetensors.numpy as stnp
 import torch
+import numpy as np
+import albumentations as A
 from typing import Optional, List, Union
 from torch.utils.data import Dataset, DataLoader
 from lightning.pytorch import LightningDataModule
@@ -81,7 +83,7 @@ class MLCZIndexableLMDBDataset(Dataset):
         :return: (patch, label) tuple where patch is a tensor of shape (C, H, W) and label is a tensor of shape (H, W)
         """
         self._init_env()
-        sample_metadata = self.metadata.iloc[idx]
+        sample_metadata =self.metadata.iloc[idx]
 
         with self.env.begin() as txn:
             img_key = sample_metadata['patch_id']
@@ -91,7 +93,25 @@ class MLCZIndexableLMDBDataset(Dataset):
         image = torch.Tensor(tensors['data'])
 
         if self.transform:
-            image = self.transform(image)
+            # Check if the transform is an albumentations Compose object
+            if isinstance(self.transform, A.Compose):
+                # Albumentations expects channel last, so permute if needed
+                # Assuming your image and mask are in shape (C, H, W)
+                image = np.array(image).transpose(1, 2, 0) # (H, W, C)
+                # mask = mask.transpose(1, 2, 0)   # (H, W, C) if mask has channels, otherwise keep as (H, W)
+
+                augmented = self.transform(image=np.array(image))
+                image = augmented['image']
+                # mask = augmented['mask']
+
+                # If you used ToTensorV2 in the albumentations transform,
+                # the output will already be a PyTorch tensor (C, H, W)
+
+            else:
+                # Assume it's a torchvision transform or a custom transform
+                image = self.transform(image)
+                # mask = self.transform(mask) # Apply transform to mask if needed
+            # image = self.transform(image)
 
         labels = torch.tensor(tensors['label'])
 
