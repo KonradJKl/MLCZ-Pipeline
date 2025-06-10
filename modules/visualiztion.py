@@ -11,7 +11,7 @@ from datetime import datetime
 
 
 class LCZVisualizer:
-    """Visualization tools for LCZ classification that work with existing code."""
+    """Enhanced visualization tools for LCZ classification with S2 data display."""
 
     def __init__(self, save_dir: str = "./visualizations"):
         """
@@ -56,6 +56,69 @@ class LCZVisualizer:
             [0, 0, 255]  # Water - Blue
         ]) / 255.0
 
+        # S2 band indices (assuming S2 bands come first in the tensor)
+        # Based on your BANDS list: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B09", "B10", "B11", "B12", "B8A"]
+        self.s2_band_indices = {
+            'B01': 0, 'B02': 1, 'B03': 2, 'B04': 3, 'B05': 4, 'B06': 5, 'B07': 6,
+            'B08': 7, 'B09': 8, 'B10': 9, 'B11': 10, 'B12': 11, 'B8A': 12
+        }
+
+        # RGB band mapping for true color (B04=Red, B03=Green, B02=Blue)
+        self.rgb_bands = [3, 2, 1]  # B04, B03, B02
+
+        # False color composite (B08=NIR, B04=Red, B03=Green)
+        self.false_color_bands = [7, 3, 2]  # B08, B04, B03
+
+    def extract_s2_rgb(self, s2_data: Union[np.ndarray, torch.Tensor], use_false_color: bool = False) -> np.ndarray:
+        """
+        Extract RGB visualization from S2 data.
+
+        Args:
+            s2_data: S2 tensor of shape (C, H, W) or (B, C, H, W)
+            use_false_color: If True, use false color composite (NIR, Red, Green)
+                            If False, use true color (Red, Green, Blue)
+
+        Returns:
+            RGB array of shape (H, W, 3) or (B, H, W, 3)
+        """
+        if isinstance(s2_data, torch.Tensor):
+            s2_data = s2_data.cpu().numpy()
+
+        # Choose bands
+        bands = self.false_color_bands if use_false_color else self.rgb_bands
+
+        if s2_data.ndim == 3:  # Single image (C, H, W)
+            rgb = s2_data[bands].transpose(1, 2, 0)  # (H, W, 3)
+        elif s2_data.ndim == 4:  # Batch (B, C, H, W)
+            rgb = s2_data[:, bands].transpose(0, 2, 3, 1)  # (B, H, W, 3)
+        else:
+            raise ValueError(f"Unexpected S2 data shape: {s2_data.shape}")
+
+        # Normalize to 0-1 range for visualization
+        rgb = self.normalize_for_display(rgb)
+
+        return rgb
+
+    def normalize_for_display(self, data: np.ndarray, percentile_clip: Tuple[float, float] = (2, 98)) -> np.ndarray:
+        """
+        Normalize data for display using percentile clipping.
+
+        Args:
+            data: Input data array
+            percentile_clip: (min_percentile, max_percentile) for clipping
+
+        Returns:
+            Normalized data in range [0, 1]
+        """
+        # Clip outliers using percentiles
+        p_min, p_max = np.percentile(data, percentile_clip)
+        data_clipped = np.clip(data, p_min, p_max)
+
+        # Normalize to 0-1
+        data_norm = (data_clipped - p_min) / (p_max - p_min + 1e-8)
+
+        return np.clip(data_norm, 0, 1)
+
     def plot_confusion_matrix(
             self,
             y_true: Union[np.ndarray, torch.Tensor],
@@ -66,16 +129,7 @@ class LCZVisualizer:
     ) -> Tuple[np.ndarray, plt.Figure]:
         """
         Generate and save confusion matrix.
-
-        Args:
-            y_true: True labels (can be 2D/3D array or flattened)
-            y_pred: Predicted labels (can be 2D/3D array or flattened)
-            experiment_name: Name for saving the plot
-            normalize: Whether to normalize the confusion matrix
-            exclude_background: Whether to exclude background class (0)
-
-        Returns:
-            Confusion matrix array and matplotlib figure
+        (Same as before - no changes needed)
         """
         # Convert to numpy if needed
         if isinstance(y_true, torch.Tensor):
@@ -149,17 +203,21 @@ class LCZVisualizer:
             self,
             predictions: Union[np.ndarray, torch.Tensor],
             targets: Union[np.ndarray, torch.Tensor],
+            s2_images: Union[np.ndarray, torch.Tensor] = None,
             experiment_name: str = "experiment",
-            num_samples: int = 4
+            num_samples: int = 4,
+            show_false_color: bool = True
     ) -> plt.Figure:
         """
-        Create visualization comparing predictions with ground truth.
+        Create enhanced visualization with S2 data, predictions and ground truth.
 
         Args:
             predictions: Predicted labels (B, H, W)
             targets: True labels (B, H, W)
+            s2_images: S2 satellite images (B, C, H, W) - first 13 channels should be S2
             experiment_name: Name for saving
             num_samples: Number of samples to visualize
+            show_false_color: If True, show false color composite; if False, show true color
 
         Returns:
             Matplotlib figure
@@ -169,59 +227,146 @@ class LCZVisualizer:
             predictions = predictions.cpu().numpy()
         if isinstance(targets, torch.Tensor):
             targets = targets.cpu().numpy()
+        if s2_images is not None and isinstance(s2_images, torch.Tensor):
+            s2_images = s2_images.cpu().numpy()
 
         # Ensure we have batch dimension
         if predictions.ndim == 2:
             predictions = predictions[np.newaxis, ...]
             targets = targets[np.newaxis, ...]
+            if s2_images is not None:
+                s2_images = s2_images[np.newaxis, ...]
 
         # Limit number of samples
         num_samples = min(num_samples, predictions.shape[0])
 
-        # Create figure
-        fig, axes = plt.subplots(num_samples, 2, figsize=(10, 5 * num_samples))
-        if num_samples == 1:
-            axes = axes.reshape(1, -1)
+        # Determine subplot layout
+        if s2_images is not None:
+            # 4 columns: S2 True Color, S2 False Color, Ground Truth, Prediction
+            fig, axes = plt.subplots(num_samples, 4, figsize=(16, 4 * num_samples))
+            if num_samples == 1:
+                axes = axes.reshape(1, -1)
+            col_titles = ['S2 True Color', 'S2 False Color', 'Ground Truth', 'Prediction']
+        else:
+            # 2 columns: Ground Truth, Prediction (original layout)
+            fig, axes = plt.subplots(num_samples, 2, figsize=(10, 5 * num_samples))
+            if num_samples == 1:
+                axes = axes.reshape(1, -1)
+            col_titles = ['Ground Truth', 'Prediction']
 
         for i in range(num_samples):
+            col_idx = 0
+
+            # Show S2 data if available
+            if s2_images is not None:
+                # Extract S2 bands (assuming first 13 channels are S2)
+                s2_sample = s2_images[i, :13]  # Take first 13 channels (S2 bands)
+
+                # True color RGB
+                s2_true_color = self.extract_s2_rgb(s2_sample, use_false_color=False)
+                axes[i, col_idx].imshow(s2_true_color)
+                axes[i, col_idx].set_title(f'S2 True Color - Sample {i + 1}')
+                axes[i, col_idx].axis('off')
+                col_idx += 1
+
+                # False color composite
+                s2_false_color = self.extract_s2_rgb(s2_sample, use_false_color=True)
+                axes[i, col_idx].imshow(s2_false_color)
+                axes[i, col_idx].set_title(f'S2 False Color - Sample {i + 1}')
+                axes[i, col_idx].axis('off')
+                col_idx += 1
+
             # Convert labels to colors
-            pred_colored = self.labels_to_colors(predictions[i])
             target_colored = self.labels_to_colors(targets[i])
+            pred_colored = self.labels_to_colors(predictions[i])
 
             # Plot ground truth
-            axes[i, 0].imshow(target_colored)
-            axes[i, 0].set_title(f'Ground Truth - Sample {i + 1}')
-            axes[i, 0].axis('off')
+            axes[i, col_idx].imshow(target_colored)
+            axes[i, col_idx].set_title(f'Ground Truth - Sample {i + 1}')
+            axes[i, col_idx].axis('off')
+            col_idx += 1
 
             # Plot prediction
-            axes[i, 1].imshow(pred_colored)
-            axes[i, 1].set_title(f'Prediction - Sample {i + 1}')
-            axes[i, 1].axis('off')
+            axes[i, col_idx].imshow(pred_colored)
+            axes[i, col_idx].set_title(f'Prediction - Sample {i + 1}')
+            axes[i, col_idx].axis('off')
 
-        plt.suptitle(f'{experiment_name} - Predictions vs Ground Truth', fontsize=16)
+        plt.suptitle(f'{experiment_name} - S2 Data, Ground Truth & Predictions', fontsize=16)
 
-        # Add legend
+        # Add legend for LCZ classes
         self.add_legend(fig)
 
         plt.tight_layout()
 
         # Save
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_path = self.save_dir / f"predictions_{experiment_name}_{timestamp}.png"
+        save_path = self.save_dir / f"predictions_with_s2_{experiment_name}_{timestamp}.png"
         fig.savefig(save_path, dpi=200, bbox_inches='tight')
-        print(f"Saved predictions visualization to: {save_path}")
+        print(f"Saved enhanced predictions visualization to: {save_path}")
+
+        return fig
+
+    def create_s2_band_visualization(
+            self,
+            s2_images: Union[np.ndarray, torch.Tensor],
+            experiment_name: str = "experiment",
+            num_samples: int = 2,
+            bands_to_show: List[str] = ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
+    ) -> plt.Figure:
+        """
+        Create visualization showing individual S2 bands.
+
+        Args:
+            s2_images: S2 satellite images (B, C, H, W)
+            experiment_name: Name for saving
+            num_samples: Number of samples to visualize
+            bands_to_show: List of S2 band names to display
+
+        Returns:
+            Matplotlib figure
+        """
+        if isinstance(s2_images, torch.Tensor):
+            s2_images = s2_images.cpu().numpy()
+
+        num_samples = min(num_samples, s2_images.shape[0])
+        num_bands = len(bands_to_show)
+
+        fig, axes = plt.subplots(num_samples, num_bands, figsize=(3 * num_bands, 3 * num_samples))
+        if num_samples == 1:
+            axes = axes.reshape(1, -1)
+
+        for i in range(num_samples):
+            for j, band_name in enumerate(bands_to_show):
+                if band_name in self.s2_band_indices:
+                    band_idx = self.s2_band_indices[band_name]
+                    band_data = s2_images[i, band_idx]
+
+                    # Normalize for display
+                    band_normalized = self.normalize_for_display(band_data)
+
+                    axes[i, j].imshow(band_data, cmap='gray')
+                    axes[i, j].set_title(f'{band_name} - Sample {i + 1}')
+                    axes[i, j].axis('off')
+                else:
+                    axes[i, j].text(0.5, 0.5, f'Band {band_name}\nnot found',
+                                    ha='center', va='center', transform=axes[i, j].transAxes)
+                    axes[i, j].axis('off')
+
+        plt.suptitle(f'{experiment_name} - S2 Individual Bands', fontsize=16)
+        plt.tight_layout()
+
+        # Save
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = self.save_dir / f"s2_bands_{experiment_name}_{timestamp}.png"
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f"Saved S2 bands visualization to: {save_path}")
 
         return fig
 
     def labels_to_colors(self, labels: np.ndarray) -> np.ndarray:
         """
         Convert label map to RGB colors.
-
-        Args:
-            labels: Label array (H, W)
-
-        Returns:
-            RGB array (H, W, 3)
+        (Same as before - no changes needed)
         """
         H, W = labels.shape
         rgb = np.zeros((H, W, 3))
@@ -234,7 +379,6 @@ class LCZVisualizer:
 
     def add_legend(self, fig: plt.Figure):
         """Add legend to figure."""
-
         # Create legend elements (skip background)
         legend_elements = [
             Patch(facecolor=self.class_colors[i], label=self.class_names[i])
@@ -258,14 +402,7 @@ class LCZVisualizer:
     ) -> Dict[str, float]:
         """
         Generate classification metrics report.
-
-        Args:
-            y_true: True labels
-            y_pred: Predicted labels
-            experiment_name: Name for saving
-
-        Returns:
-            Dictionary of metrics
+        (Same as before - no changes needed)
         """
         # Convert to numpy and flatten
         if isinstance(y_true, torch.Tensor):
@@ -311,7 +448,7 @@ class LCZVisualizer:
 
 def visualize_model_predictions(model, dataloader, visualizer, experiment_name, device='cuda', max_batches=10):
     """
-    Helper function to visualize model predictions on test data.
+    Enhanced helper function to visualize model predictions with S2 data.
 
     Args:
         model: Trained model
@@ -328,6 +465,7 @@ def visualize_model_predictions(model, dataloader, visualizer, experiment_name, 
     all_targets = []
     sample_preds = []
     sample_targets = []
+    sample_images = []
 
     with torch.no_grad():
         for i, (images, labels) in enumerate(dataloader):
@@ -348,17 +486,18 @@ def visualize_model_predictions(model, dataloader, visualizer, experiment_name, 
             all_preds.append(preds.cpu())
             all_targets.append(labels.cpu())
 
-            # Store first batch for visualization
+            # Store first batch for visualization (including images)
             if i == 0:
                 sample_preds = preds.cpu()
                 sample_targets = labels.cpu()
+                sample_images = images.cpu()
 
     # Concatenate all predictions
     all_preds = torch.cat(all_preds)
     all_targets = torch.cat(all_targets)
 
     # Generate visualizations
-    print("\nGenerating visualizations...")
+    print("\nGenerating enhanced visualizations with S2 data...")
 
     # 1. Confusion Matrix
     cm, cm_fig = visualizer.plot_confusion_matrix(
@@ -369,16 +508,26 @@ def visualize_model_predictions(model, dataloader, visualizer, experiment_name, 
     )
     plt.close(cm_fig)
 
-    # 2. Sample predictions
+    # 2. Enhanced predictions with S2 data
     pred_fig = visualizer.create_prediction_visualization(
         sample_preds,
         sample_targets,
+        sample_images,  # Pass the S2 images
         experiment_name,
         num_samples=4
     )
     plt.close(pred_fig)
 
-    # 3. Metrics report
+    # 3. S2 band visualization
+    band_fig = visualizer.create_s2_band_visualization(
+        sample_images,
+        experiment_name,
+        num_samples=2,
+        bands_to_show=['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
+    )
+    plt.close(band_fig)
+
+    # 4. Metrics report
     metrics = visualizer.generate_metrics_report(
         all_targets,
         all_preds,
@@ -391,24 +540,3 @@ def visualize_model_predictions(model, dataloader, visualizer, experiment_name, 
     print(f"  Weighted F1: {metrics['weighted_f1']:.3f}")
 
     return metrics
-
-
-# Example usage that can be added to experiments.py after training:
-"""
-# After trainer.test(model, ckpt_path="best") in experiments.py, add:
-
-from visualization import LCZVisualizer, visualize_model_predictions
-
-# Create visualizer
-visualizer = LCZVisualizer(save_dir="./visualizations")
-
-# Generate visualizations on test set
-experiment_name = f"{args.dataset}_{args.arch_name}_pt={args.pretrained}_do={args.dropout}"
-metrics = visualize_model_predictions(
-    model,
-    datamodule.test_dataloader(),
-    visualizer,
-    experiment_name,
-    device='cuda' if torch.cuda.is_available() else 'cpu'
-)
-"""

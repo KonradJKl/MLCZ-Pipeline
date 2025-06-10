@@ -77,43 +77,41 @@ class MLCZIndexableLMDBDataset(Dataset):
 
     def __getitem__(self, idx):
         """
-        Get an item from the dataset.
-
-        :param idx: index of the item to get
-        :return: (patch, label) tuple where patch is a tensor of shape (C, H, W) and label is a tensor of shape (H, W)
+        FIXED: Properly handle both image and mask transformations
         """
         self._init_env()
-        sample_metadata =self.metadata.iloc[idx]
+        sample_metadata = self.metadata.iloc[idx]
 
         with self.env.begin() as txn:
             img_key = sample_metadata['patch_id']
             img_data = txn.get(img_key.encode())
             tensors = stnp.load(img_data)
 
-        image = torch.Tensor(tensors['data'])
+        # Load data as numpy arrays first
+        image = tensors['data'].astype(np.float32)  # (C, H, W)
+        labels = tensors['label'].astype(np.int64)  # (H, W)
 
-        if self.transform:
-            # Check if the transform is an albumentations Compose object
+        # Apply transformations ONLY if this is training split AND transform exists
+        if self.transform and self.split == 'train':
             if isinstance(self.transform, A.Compose):
-                # Albumentations expects channel last, so permute if needed
-                # Assuming your image and mask are in shape (C, H, W)
-                image = np.array(image).transpose(1, 2, 0) # (H, W, C)
-                # mask = mask.transpose(1, 2, 0)   # (H, W, C) if mask has channels, otherwise keep as (H, W)
+                # Convert from (C, H, W) to (H, W, C) for albumentations
+                image_hwc = image.transpose(1, 2, 0)
 
-                augmented = self.transform(image=np.array(image))
-                image = augmented['image']
-                # mask = augmented['mask']
+                # ✅ FIX: Apply transforms to BOTH image and mask
+                augmented = self.transform(image=image_hwc, mask=labels)
 
-                # If you used ToTensorV2 in the albumentations transform,
-                # the output will already be a PyTorch tensor (C, H, W)
-
+                # Convert back to tensors
+                image = torch.tensor(augmented['image'].transpose(2, 0, 1), dtype=torch.float32)  # Back to (C, H, W)
+                labels = torch.tensor(augmented['mask'], dtype=torch.long)
             else:
-                # Assume it's a torchvision transform or a custom transform
+                # Handle other transform types
+                image = torch.tensor(image, dtype=torch.float32)
+                labels = torch.tensor(labels, dtype=torch.long)
                 image = self.transform(image)
-                # mask = self.transform(mask) # Apply transform to mask if needed
-            # image = self.transform(image)
-
-        labels = torch.tensor(tensors['label'])
+        else:
+            # No transform or not training - just convert to tensors
+            image = torch.tensor(image, dtype=torch.float32)
+            labels = torch.tensor(labels, dtype=torch.long)
 
         return image, labels
 
@@ -193,11 +191,10 @@ class MLCZDataModule(LightningDataModule):
 
     def setup(self, stage=None):
         """
-        Set up datasets for training, validation, and testing splits.
+        ✅ FIXED: Only training dataset gets transforms
         """
         print(f"\n🏗️  Setting up MLCZ DataModule...")
 
-        # Read metadata to get available cities and classes
         metadata = pd.read_parquet(self.metadata_parquet_path)
         self.available_cities = sorted(metadata['city'].unique())
 
@@ -208,38 +205,44 @@ class MLCZDataModule(LightningDataModule):
         if self.classes:
             print(f"Available classes: {self.classes}")
 
-        dataset_args = {
-            'lmdb_path': self.lmdb_path,
-            'metadata_parquet_path': self.metadata_parquet_path,
-            'transform': self.transform,
-            'label_filter': self.label_filter,
-            'min_label_diversity': self.min_label_diversity
-        }
-
-        # Create datasets with city filtering
+        # ✅ FIX: Only pass transform to training dataset
         self.train_dataset = MLCZIndexableLMDBDataset(
-            **dataset_args,
+            lmdb_path=self.lmdb_path,
+            metadata_parquet_path=self.metadata_parquet_path,
             split='train',
-            cities=self.train_cities
+            transform=self.transform,  # ✅ Transform only for training
+            cities=self.train_cities,
+            label_filter=self.label_filter,
+            min_label_diversity=self.min_label_diversity
         )
 
+        # ✅ FIX: No transform for validation and test
         self.val_dataset = MLCZIndexableLMDBDataset(
-            **dataset_args,
+            lmdb_path=self.lmdb_path,
+            metadata_parquet_path=self.metadata_parquet_path,
             split='validation',
-            cities=self.val_cities
+            transform=None,  # ✅ No transform for validation
+            cities=self.val_cities,
+            label_filter=self.label_filter,
+            min_label_diversity=self.min_label_diversity
         )
 
         self.test_dataset = MLCZIndexableLMDBDataset(
-            **dataset_args,
+            lmdb_path=self.lmdb_path,
+            metadata_parquet_path=self.metadata_parquet_path,
             split='test',
-            cities=self.test_cities
+            transform=None,  # ✅ No transform for test
+            cities=self.test_cities,
+            label_filter=self.label_filter,
+            min_label_diversity=self.min_label_diversity
         )
 
-        # Print dataset information
+        # Print dataset information with transform status
         print(f"\n📊 Dataset Statistics:")
         for name, dataset in [('Train', self.train_dataset), ('Val', self.val_dataset), ('Test', self.test_dataset)]:
             info = dataset.get_dataset_info()
-            print(f"  {name}: {info['total_patches']} patches from cities {info['cities']}")
+            transform_status = "with transforms" if dataset.transform else "no transforms"
+            print(f"  {name}: {info['total_patches']} patches from cities {info['cities']} ({transform_status})")
             if 'label_counts' in info:
                 print(f"    Label distribution: {info['label_counts']}")
 

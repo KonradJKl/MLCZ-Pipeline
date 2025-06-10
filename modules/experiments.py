@@ -45,13 +45,27 @@ parser.add_argument('--min_label_diversity', default=None, help='Minimum label d
 
 def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
     augmentation_transform = A.Compose([
-    A.HorizontalFlip(p=0.5),
-    A.VerticalFlip(p=0.5),
-    A.RandomRotate90(p=0.5),
-    A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45, p=0.5),
-    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-    ToTensorV2() # Convert image to PyTorch tensor and normalize
-  ])
+        # Geometric transforms (applied to both image and mask)
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.ShiftScaleRotate(
+            shift_limit=0.0625,
+            scale_limit=0.1,
+            rotate_limit=45,
+            p=0.5,
+            border_mode=0,  # Use constant border
+        ),
+
+        # Color/intensity transforms (only applied to image, not mask)
+        A.RandomBrightnessContrast(
+            brightness_limit=0.2,
+            contrast_limit=0.2,
+            p=0.5
+        ),
+
+        # ✅ REMOVED ToTensorV2 - we handle tensor conversion manually in the dataset
+    ], additional_targets={'mask': 'mask'})
     
     
     if dataset == "MLCZ":
@@ -139,7 +153,7 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
         datamodule.test_dataloader(),
         visualizer,
         experiment_name,
-        device=torch.cuda.get_device_name(0),
+        device='cuda' if torch.cuda.is_available() else 'cpu',
         max_batches=20  # Process more batches for better statistics
     )
 
