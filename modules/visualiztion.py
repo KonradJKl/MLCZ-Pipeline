@@ -8,6 +8,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from datetime import datetime
+import json
 
 
 class LCZVisualizer:
@@ -129,7 +130,6 @@ class LCZVisualizer:
     ) -> Tuple[np.ndarray, plt.Figure]:
         """
         Generate and save confusion matrix.
-        (Same as before - no changes needed)
         """
         # Convert to numpy if needed
         if isinstance(y_true, torch.Tensor):
@@ -366,7 +366,6 @@ class LCZVisualizer:
     def labels_to_colors(self, labels: np.ndarray) -> np.ndarray:
         """
         Convert label map to RGB colors.
-        (Same as before - no changes needed)
         """
         H, W = labels.shape
         rgb = np.zeros((H, W, 3))
@@ -401,8 +400,10 @@ class LCZVisualizer:
             experiment_name: str = "experiment"
     ) -> Dict[str, float]:
         """
-        Generate classification metrics report.
-        (Same as before - no changes needed)
+        Generate comprehensive classification metrics report and save as JSON.
+
+        Returns:
+            Dict containing both overall metrics and per-class metrics
         """
         # Convert to numpy and flatten
         if isinstance(y_true, torch.Tensor):
@@ -427,20 +428,57 @@ class LCZVisualizer:
             zero_division=0
         )
 
-        # Save detailed report
+        # Save detailed report as CSV
         report_df = pd.DataFrame(report).transpose()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_path = self.save_dir / f"classification_report_{experiment_name}_{timestamp}.csv"
         report_df.to_csv(report_path)
-        print(f"Saved classification report to: {report_path}")
+        print(f"Saved classification report CSV to: {report_path}")
 
-        # Extract key metrics
+        # Create comprehensive metrics dictionary
+        comprehensive_metrics = {
+            "overall_metrics": {
+                "accuracy": float(report['accuracy']),
+                "macro_avg": {
+                    "precision": float(report['macro avg']['precision']),
+                    "recall": float(report['macro avg']['recall']),
+                    "f1-score": float(report['macro avg']['f1-score']),
+                    "support": int(report['macro avg']['support'])
+                },
+                "weighted_avg": {
+                    "precision": float(report['weighted avg']['precision']),
+                    "recall": float(report['weighted avg']['recall']),
+                    "f1-score": float(report['weighted avg']['f1-score']),
+                    "support": int(report['weighted avg']['support'])
+                }
+            },
+            "per_class_metrics": {}
+        }
+
+        # Add per-class metrics
+        for i, class_name in enumerate(self.class_names[1:], 1):  # Skip background
+            if class_name in report:
+                comprehensive_metrics["per_class_metrics"][f"class_{i}_{class_name}"] = {
+                    "precision": float(report[class_name]['precision']),
+                    "recall": float(report[class_name]['recall']),
+                    "f1-score": float(report[class_name]['f1-score']),
+                    "support": int(report[class_name]['support'])
+                }
+
+        # Save as JSON
+        json_path = self.save_dir / f"metrics_{experiment_name}_{timestamp}.json"
+        with open(json_path, 'w') as f:
+            json.dump(comprehensive_metrics, f, indent=4)
+        print(f"Saved metrics JSON to: {json_path}")
+
+        # Return both simple metrics (for backward compatibility) and full metrics
         metrics = {
-            'accuracy': report['accuracy'],
-            'macro_f1': report['macro avg']['f1-score'],
-            'weighted_f1': report['weighted avg']['f1-score'],
-            'macro_precision': report['macro avg']['precision'],
-            'macro_recall': report['macro avg']['recall']
+            'accuracy': comprehensive_metrics['overall_metrics']['accuracy'],
+            'macro_f1': comprehensive_metrics['overall_metrics']['macro_avg']['f1-score'],
+            'weighted_f1': comprehensive_metrics['overall_metrics']['weighted_avg']['f1-score'],
+            'macro_precision': comprehensive_metrics['overall_metrics']['macro_avg']['precision'],
+            'macro_recall': comprehensive_metrics['overall_metrics']['macro_avg']['recall'],
+            'comprehensive_metrics': comprehensive_metrics  # Add full metrics
         }
 
         return metrics
@@ -527,7 +565,7 @@ def visualize_model_predictions(model, dataloader, visualizer, experiment_name, 
     )
     plt.close(band_fig)
 
-    # 4. Metrics report
+    # 4. Metrics report (now includes JSON output)
     metrics = visualizer.generate_metrics_report(
         all_targets,
         all_preds,

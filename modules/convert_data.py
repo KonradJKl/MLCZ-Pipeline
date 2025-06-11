@@ -36,7 +36,7 @@ def load_data(input_data_path: str, output_lmdb_path: str, output_parquet_path: 
         print("\nAligning and creating LMDB...")
         keys = create_lmdb_with_alignment(city_to_files_paths, output_lmdb_path)
         print("\nCreating Metadata...")
-        metadata = create_metadata(keys, stratify_by, split_strategy)
+        metadata = create_metadata(keys, stratify_by, split_strategy, lmdb_path=output_lmdb_path)
         metadata.to_parquet(output_parquet_path)
 
 

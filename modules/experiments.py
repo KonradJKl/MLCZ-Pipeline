@@ -177,6 +177,6 @@ if __name__ == "__main__":
         project="MLCZ-Pipeline-Server",
         save_dir=arguments.logging_dir,
         group=arguments.dataset,
-        name=f"{arguments.dataset}_{arguments.arch_name}_pt={arguments.pretrained}_do={arguments.dropout}" if arguments.augmentation is None else f"{arguments.dataset}_{arguments.augmentation}"
+        name=f"{arguments.dataset}_{arguments.arch_name}_training={arguments.train_cities}_testing={arguments.test_cities}" if arguments.augmentation is None else f"{arguments.dataset}_{arguments.augmentation}"
     )
     run_benchmark(arguments, arguments.arch_name, arguments.pretrained, arguments.dropout, arguments.dataset, logger)
