@@ -158,8 +158,19 @@ cython_debug/
 # PyCharm.
 .idea/
 
-#Personal
-.untracked-files/
-.logs/
-.data/
+# Raw rasters, converted patches and everything training writes
+data/
+processed/
+logs/
+wandb/
+lightning_logs/
+checkpoints/
+visualizations/
+interactive_maps/
+temp/
+*.tif
+*.lmdb/
+*.mdb
+*.parquet
+*.ckpt
 

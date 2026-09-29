@@ -1,0 +1,8 @@
+[server]
+# Only reachable from this machine
+address = "localhost"
+# Watching the imported modules trips over torch.classes and logs a traceback on every run
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false

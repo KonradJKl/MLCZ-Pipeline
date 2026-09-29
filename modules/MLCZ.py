@@ -1,3 +1,4 @@
+import random
 import pandas as pd
 import lmdb
 import safetensors.numpy as stnp
@@ -13,12 +14,13 @@ class MLCZIndexableLMDBDataset(Dataset):
     def __init__(self, lmdb_path, metadata_parquet_path, split, transform=None,
                  cities=None, label_filter=None, min_label_diversity=None):
         """
-        Dataset for the MLCZ Task using a lmdb file.
+        Dataset for the MLCZ task that reads patches from an LMDB file.
 
         :param lmdb_path: path to the lmdb file
         :param metadata_parquet_path: path to the metadata parquet file
         :param split: split of the dataset to use, one of 'train', 'validation', 'test', None (uses all data)
-        :param transform: a torchvision transform to apply to the images after loading
+        :param transform: transform to apply after loading, only used for the 'train' split; an albumentations
+            Compose is applied to image and mask, any other transform to the image only
         :param cities: list of cities to include, None for all cities
         :param label_filter: list of dominant labels to include, None for all labels
         :param min_label_diversity: minimum number of different labels per patch
@@ -52,6 +54,7 @@ class MLCZIndexableLMDBDataset(Dataset):
             raise ValueError("No patches match the specified filters!")
 
         self.env = None
+        self.worker_seed = None
 
         # Store available cities and labels for reference
         self.available_cities = sorted(self.metadata['city'].unique())
@@ -68,6 +71,19 @@ class MLCZIndexableLMDBDataset(Dataset):
         if self.env is None:
             self.env = lmdb.open(self.lmdb_path, readonly=True, lock=False, readahead=False, meminit=False)
 
+    def _init_worker_augmentations(self):
+        """
+        Give each DataLoader worker its own augmentation stream. Every worker gets a copy of the transform, so without
+        this all workers would repeat the same augmentations. torch.initial_seed() is the worker's torch seed, which
+        Lightning derives from the seeded main process, the worker id and the GPU rank.
+        :return: None
+        """
+        worker = torch.utils.data.get_worker_info()
+        if worker is not None and self.worker_seed != worker.seed:
+            self.worker_seed = worker.seed
+            seed = torch.initial_seed()
+            self.transform.set_random_state(np.random.default_rng(seed), random.Random(seed))
+
     def __len__(self):
         """
         Get the number of items in the dataset.
@@ -77,7 +93,10 @@ class MLCZIndexableLMDBDataset(Dataset):
 
     def __getitem__(self, idx):
         """
-        FIXED: Properly handle both image and mask transformations
+        Load a patch and its label mask. The transform is only applied for the 'train' split.
+
+        :param idx: index of the patch
+        :return: image tensor (C, H, W) and label tensor (H, W)
         """
         self._init_env()
         sample_metadata = self.metadata.iloc[idx]
@@ -91,25 +110,25 @@ class MLCZIndexableLMDBDataset(Dataset):
         image = tensors['data'].astype(np.float32)  # (C, H, W)
         labels = tensors['label'].astype(np.int64)  # (H, W)
 
-        # Apply transformations ONLY if this is training split AND transform exists
+        # Augment only the training split
         if self.transform and self.split == 'train':
             if isinstance(self.transform, A.Compose):
+                self._init_worker_augmentations()
                 # Convert from (C, H, W) to (H, W, C) for albumentations
                 image_hwc = image.transpose(1, 2, 0)
 
-                # ✅ FIX: Apply transforms to BOTH image and mask
+                # Same spatial transform for image and mask
                 augmented = self.transform(image=image_hwc, mask=labels)
 
-                # Convert back to tensors
                 image = torch.tensor(augmented['image'].transpose(2, 0, 1), dtype=torch.float32)  # Back to (C, H, W)
                 labels = torch.tensor(augmented['mask'], dtype=torch.long)
             else:
-                # Handle other transform types
+                # Other transforms are applied to the image only
                 image = torch.tensor(image, dtype=torch.float32)
                 labels = torch.tensor(labels, dtype=torch.long)
                 image = self.transform(image)
         else:
-            # No transform or not training - just convert to tensors
+            # No transform for validation, test and inference
             image = torch.tensor(image, dtype=torch.float32)
             labels = torch.tensor(labels, dtype=torch.long)
 
@@ -121,6 +140,8 @@ class MLCZIndexableLMDBDataset(Dataset):
             'total_patches': len(self.metadata),
             'cities': self.available_cities,
             'city_counts': dict(self.metadata['city'].value_counts()),
+            'split': self.split,
+            'has_transform': self.transform is not None
         }
 
         if 'dominant_label' in self.metadata.columns:
@@ -156,7 +177,7 @@ class MLCZDataModule(LightningDataModule):
         :param base_path: path to the source dataset (for future extensions)
         :param lmdb_path: path to the converted lmdb file
         :param metadata_parquet_path: path to the metadata parquet file
-        :param transform: transform to apply to images
+        :param transform: transform to apply to images, only used for the training dataset
         :param train_cities: cities to use for training (None = all available)
         :param val_cities: cities to use for validation (None = all available)
         :param test_cities: cities to use for testing (None = all available)
@@ -191,9 +212,9 @@ class MLCZDataModule(LightningDataModule):
 
     def setup(self, stage=None):
         """
-        ✅ FIXED: Only training dataset gets transforms
+        Create the train, validation and test datasets. Only the training dataset gets the transform.
         """
-        print(f"\n🏗️  Setting up MLCZ DataModule...")
+        print("\nSetting up MLCZ DataModule...")
 
         metadata = pd.read_parquet(self.metadata_parquet_path)
         self.available_cities = sorted(metadata['city'].unique())
@@ -202,26 +223,22 @@ class MLCZDataModule(LightningDataModule):
             self.classes = sorted(metadata['dominant_label'].unique())
 
         print(f"Available cities: {self.available_cities}")
-        if self.classes:
-            print(f"Available classes: {self.classes}")
 
-        # ✅ FIX: Only pass transform to training dataset
         self.train_dataset = MLCZIndexableLMDBDataset(
             lmdb_path=self.lmdb_path,
             metadata_parquet_path=self.metadata_parquet_path,
             split='train',
-            transform=self.transform,  # ✅ Transform only for training
+            transform=self.transform,
             cities=self.train_cities,
             label_filter=self.label_filter,
             min_label_diversity=self.min_label_diversity
         )
 
-        # ✅ FIX: No transform for validation and test
         self.val_dataset = MLCZIndexableLMDBDataset(
             lmdb_path=self.lmdb_path,
             metadata_parquet_path=self.metadata_parquet_path,
             split='validation',
-            transform=None,  # ✅ No transform for validation
+            transform=None,
             cities=self.val_cities,
             label_filter=self.label_filter,
             min_label_diversity=self.min_label_diversity
@@ -231,20 +248,19 @@ class MLCZDataModule(LightningDataModule):
             lmdb_path=self.lmdb_path,
             metadata_parquet_path=self.metadata_parquet_path,
             split='test',
-            transform=None,  # ✅ No transform for test
+            transform=None,
             cities=self.test_cities,
             label_filter=self.label_filter,
             min_label_diversity=self.min_label_diversity
         )
 
-        # Print dataset information with transform status
-        print(f"\n📊 Dataset Statistics:")
+        print("\nDataset statistics:")
         for name, dataset in [('Train', self.train_dataset), ('Val', self.val_dataset), ('Test', self.test_dataset)]:
             info = dataset.get_dataset_info()
-            transform_status = "with transforms" if dataset.transform else "no transforms"
-            print(f"  {name}: {info['total_patches']} patches from cities {info['cities']} ({transform_status})")
+            transform_status = "with transforms" if info['has_transform'] else "no transforms"
+            print(f"{name}: {info['total_patches']} patches from cities {info['cities']} ({transform_status})")
             if 'label_counts' in info:
-                print(f"    Label distribution: {info['label_counts']}")
+                print(f"  Dominant labels: {info['label_counts']}")
 
     def train_dataloader(self):
         """Return DataLoader for the training dataset."""
@@ -309,6 +325,25 @@ class MLCZDataModule(LightningDataModule):
             **kwargs
         )
 
+    def compute_channel_stats(self):
+        """
+        Compute channel-wise mean and standard deviation for normalization.
+        This method creates a temporary dataset without transforms to get raw stats.
+        """
+        print("Computing channel statistics...")
+
+        temp_dataset = MLCZIndexableLMDBDataset(
+            lmdb_path=self.lmdb_path,
+            metadata_parquet_path=self.metadata_parquet_path,
+            split='train',
+            transform=None,  # No transforms for stats
+            cities=self.train_cities,
+            label_filter=self.label_filter,
+            min_label_diversity=self.min_label_diversity
+        )
+
+        loader = DataLoader(temp_dataset, batch_size=32, shuffle=False, num_workers=2)
+
         total_sum = None
         total_sq_sum = None
         total_pixels = 0
@@ -318,27 +353,26 @@ class MLCZDataModule(LightningDataModule):
             B, C, H, W = images.shape
             pixels = B * H * W
 
-            # lazily init accumulators once we know C
+            # Lazily init accumulators once C is known
             if total_sum is None:
                 total_sum = torch.zeros(C)
                 total_sq_sum = torch.zeros(C)
 
-            # sum over batch and spatial dims
-            sum_    = images.sum(dim=[0, 2, 3])          # shape (C,)
-            sq_sum  = (images ** 2).sum(dim=[0, 2, 3])    # shape (C,)
+            # Sum over batch and spatial dims
+            sum_ = images.sum(dim=[0, 2, 3])  # shape (C,)
+            sq_sum = (images ** 2).sum(dim=[0, 2, 3])  # shape (C,)
 
-            total_sum    += sum_
+            total_sum += sum_
             total_sq_sum += sq_sum
             total_pixels += pixels
 
-        # compute mean & std
         means = total_sum / total_pixels
-        stds  = torch.sqrt(total_sq_sum / total_pixels - means ** 2)
+        stds = torch.sqrt(total_sq_sum / total_pixels - means ** 2)
 
-        # clean up LMDB env to avoid leaking file handles
-        if hasattr(dataset, 'env') and dataset.env is not None:
-            dataset.env.close()
-            dataset.env = None
+        # Close the LMDB env to avoid leaking file handles
+        if hasattr(temp_dataset, 'env') and temp_dataset.env is not None:
+            temp_dataset.env.close()
+            temp_dataset.env = None
 
-        # return as numpy arrays (so you can feed them into transforms.Normalize)
+        # Numpy arrays so they can be passed to a Normalize transform
         return means.numpy(), stds.numpy()

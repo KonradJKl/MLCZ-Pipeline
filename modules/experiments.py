@@ -1,37 +1,38 @@
 import argparse
+import random
+import numpy as np
 import torch
 import os
-from lightning.pytorch import Trainer
+from pathlib import Path
+from dotenv import load_dotenv
+from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
-from torchvision import transforms
 from base import BaseModel
 from model import get_network
-from visualiztion import LCZVisualizer, visualize_model_predictions
+from visualization import LCZVisualizer, visualize_model_predictions
 from MLCZ import MLCZDataModule
-import albumentations as A  # Import albumentations
-from albumentations.pytorch import ToTensorV2  # Import ToTensorV2
+import albumentations as A
 
 
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 parser = argparse.ArgumentParser(prog='MLCZ-Pipeline', description='Run Experiments.')
 
-parser.add_argument('--logging_dir', type=str)
-parser.add_argument("--logger", type=str, default="wandb")
+parser.add_argument('--logging_dir', type=str, default=str(Path(__file__).resolve().parent.parent / "logs"))
 
-parser.add_argument('--dataset', default='MLCZ', type=str, required=True)
+parser.add_argument('--dataset', default='MLCZ', type=str)
 parser.add_argument('--lmdb_path', type=str)
 parser.add_argument('--metadata_parquet_path', type=str)
 
-parser.add_argument('--num_channels', type=int, default=18, required=True)
-parser.add_argument('--num_classes', type=int, default=244, required=True)
+parser.add_argument('--num_channels', type=int, default=244)  # 10 Sentinel-2 bands + 234 PRISMA bands
+parser.add_argument('--num_classes', type=int, default=18)  # LCZ 1-17 and 0 for no data
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--batch_size', type=int, default=32)
 
 parser.add_argument('--arch_name', type=str, choices=["unet", "CustomCNN"], required=True)
 parser.add_argument('--pretrained', action='store_true')
 parser.add_argument('--dropout', action='store_true')
-parser.add_argument('--epochs', type=int, default=5)
+parser.add_argument('--epochs', type=int, default=50)
+parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--learning_rate', type=float, default=0.0005)
 parser.add_argument('--weight_decay', type=float, default=0.0001)
 parser.add_argument('--augmentation', type=str, default=None)
@@ -40,7 +41,7 @@ parser.add_argument('--train_cities', type=str, nargs='*', default=None, help='C
 parser.add_argument('--val_cities', type=str, nargs='*', default=None, help='Cities to use for validation')
 parser.add_argument('--test_cities', type=str, nargs='*', default=None, help='Cities to use for testing')
 parser.add_argument('--label_filter', type=int, nargs='*', default=None, help='Label IDs to include')
-parser.add_argument('--min_label_diversity', default=None, help='Minimum label diversity per patch')
+parser.add_argument('--min_label_diversity', type=int, default=None, help='Minimum label diversity per patch')
 
 
 def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
@@ -49,10 +50,11 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
         A.RandomRotate90(p=0.5),
-        A.ShiftScaleRotate(
-            shift_limit=0.0625,
-            scale_limit=0.1,
-            rotate_limit=45,
+        # What A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45) does, without its deprecation warning
+        A.Affine(
+            translate_percent=(-0.0625, 0.0625),
+            scale=(0.9, 1.1),
+            rotate=(-45, 45),
             p=0.5,
             border_mode=0,  # Use constant border
         ),
@@ -63,11 +65,12 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
             contrast_limit=0.2,
             p=0.5
         ),
-
-        # ✅ REMOVED ToTensorV2 - we handle tensor conversion manually in the dataset
     ], additional_targets={'mask': 'mask'})
-    
-    
+    # One generator shared by all transforms. A.Compose(seed=...) would give every transform its own generator with
+    # the same seed, then e.g. both flips are always applied together. With num_workers > 0 every DataLoader worker
+    # replaces it with its own generator (MLCZ.py)
+    augmentation_transform.set_random_state(np.random.default_rng(args.seed), random.Random(args.seed))
+
     if dataset == "MLCZ":
         datamodule = MLCZDataModule(
             batch_size=args.batch_size,
@@ -128,16 +131,8 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
     trainer.fit(model)
     test_results = trainer.test(model, ckpt_path="best")
 
-    # Generate visualizations if requested
-
-    print("\n" + "="*50)
-    print("GENERATING VISUALIZATIONS")
-    print("="*50)
-
-    # Create visualizer
     visualizer = LCZVisualizer(save_dir=os.path.join(args.logging_dir, "visualizations"))
 
-    # Generate visualizations on test set
     experiment_name = f"{args.dataset}_{args.arch_name}_pt={args.pretrained}_do={args.dropout}"
 
     # Load best checkpoint for visualization
@@ -148,24 +143,23 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
         network=network
     )
 
+    test_loader = datamodule.test_dataloader()
     metrics = visualize_model_predictions(
         best_model,
-        datamodule.test_dataloader(),
+        test_loader,
         visualizer,
         experiment_name,
         device='cuda' if torch.cuda.is_available() else 'cpu',
-        max_batches=20  # Process more batches for better statistics
+        max_batches=len(test_loader)
     )
 
-    # Log metrics to wandb if using wandb logger
-    if args.logger == "wandb" and logger:
-        logger.log_metrics({
-            "test/accuracy": metrics['accuracy'],
-            "test/macro_f1": metrics['macro_f1'],
-            "test/weighted_f1": metrics['weighted_f1'],
-            "test/macro_precision": metrics['macro_precision'],
-            "test/macro_recall": metrics['macro_recall']
-        })
+    logger.log_metrics({
+        "test/accuracy": metrics['accuracy'],
+        "test/macro_f1": metrics['macro_f1'],
+        "test/weighted_f1": metrics['weighted_f1'],
+        "test/macro_precision": metrics['macro_precision'],
+        "test/macro_recall": metrics['macro_recall']
+    })
 
     return test_results
 
@@ -173,10 +167,18 @@ def run_benchmark(args, arch_name, pretrained, dropout, dataset, logger):
 if __name__ == "__main__":
     arguments = parser.parse_args()
     print(arguments)
+    # Seeds torch, numpy and the DataLoader workers, the augmentations are seeded in run_benchmark and MLCZ.py
+    seed_everything(arguments.seed, workers=True)
+
+    load_dotenv()
+    if not os.getenv("WANDB_API_KEY") and not os.getenv("WANDB_MODE"):
+        print("\nWANDB_API_KEY is not set, logging to W&B offline (upload later with `wandb sync`)")
+        os.environ["WANDB_MODE"] = "offline"
+
     logger = WandbLogger(
         project="MLCZ-Pipeline-Server",
         save_dir=arguments.logging_dir,
         group=arguments.dataset,
-        name=f"{arguments.dataset}_{arguments.arch_name}_training={arguments.train_cities}_testing={arguments.test_cities}" if arguments.augmentation is None else f"{arguments.dataset}_{arguments.augmentation}"
+        name=f"{arguments.dataset}_{arguments.arch_name}_pt={arguments.pretrained}_do={arguments.dropout}_training={arguments.train_cities}_testing={arguments.test_cities}" if arguments.augmentation is None else f"{arguments.dataset}_{arguments.augmentation}"
     )
     run_benchmark(arguments, arguments.arch_name, arguments.pretrained, arguments.dropout, arguments.dataset, logger)

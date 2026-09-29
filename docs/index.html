@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapping Local Climate Zones in European Cities</title>
+<meta name="description"
+  content="Semantic segmentation of Local Climate Zones in Berlin, Milan and Athens from Sentinel-2 and PRISMA data.">
+<link rel="stylesheet" href="style.css">
+<script src="viewer.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <nav class="wrap nav">
+    <a class="brand" href="#top">MLCZ-Pipeline</a>
+    <ul>
+      <li><a href="#why">Why LCZ</a></li>
+      <li><a href="#data">Data</a></li>
+      <li><a href="#method">Method</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#run">Run it</a></li>
+      <li><a href="https://github.com/KonradJKl/MLCZ-Pipeline">GitHub</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Erasmus+ BIP &ldquo;Machine Learning for Earth Observation Data Processing and Fusion&rdquo;,
+      Pavia, June 2025</p>
+    <h1>Mapping Local Climate Zones in European Cities</h1>
+    <p class="lead">A U-Net assigns every 10&nbsp;m pixel of Berlin, Milan and Athens one of the 17 Local Climate Zones,
+      using 10 Sentinel-2 bands and 234 PRISMA hyperspectral bands.</p>
+    <p class="team">Our team project as Group&nbsp;2: Sona, Sohane, Pegah, Mahila, Samy and me, Konrad Kloska.
+      I wrote most of the code and extended it after the course.</p>
+    <p class="actions">
+      <a class="button primary" href="#maps">View the city maps</a>
+      <a class="button" href="https://github.com/KonradJKl/MLCZ-Pipeline">Code on GitHub</a>
+    </p>
+    <dl class="facts">
+      <div style="--c: #ff0000"><dt>Cities</dt><dd>3</dd></div>
+      <div style="--c: #ffa500"><dt>Input channels</dt><dd>244</dd></div>
+      <div style="--c: #008000"><dt>Patches of 64&nbsp;&times;&nbsp;64 pixels</dt><dd>7002</dd></div>
+      <div style="--c: #0000ff"><dt>LCZ classes</dt><dd>17</dd></div>
+    </dl>
+    <figure class="hero-figure" id="hero-figure" hidden>
+      <img alt="Berlin: Sentinel-2 true color, ground truth and prediction" width="1598" height="509">
+      <figcaption>Berlin: Sentinel-2 true color, LCZ Generator labels and the prediction of the current
+        model.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap">
+    <h2>Why Local Climate Zones</h2>
+    <p class="intro">Local Climate Zones (LCZ) classify urban and natural landscapes by their surface cover, structure
+      and thermal properties (<a href="https://doi.org/10.1175/BAMS-D-11-00019.1">Stewart and Oke, 2012</a>).
+      The scheme has 17 standard classes: ten built types and seven land cover types. Because the zones are defined
+      the same way everywhere, maps of different cities can be compared directly.</p>
+    <div class="cards">
+      <div class="card">
+        <h3>What the maps are used for</h3>
+        <ul>
+          <li>Finding areas that are vulnerable to heat</li>
+          <li>Climate adaptation and urban resilience</li>
+          <li>Urban planning and zoning</li>
+          <li>Input for urban microclimate models</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Why it is hard</h3>
+        <ul>
+          <li>Cities mix buildings, roads and green areas at small scales</li>
+          <li>Boundaries between zones are often unclear in satellite images</li>
+          <li>Lighting and shadows change how buildings look</li>
+          <li>Little ground truth exists across cities</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Why satellite data</h3>
+        <ul>
+          <li>Wide and repeated coverage</li>
+          <li>Multispectral and hyperspectral bands reveal surface materials</li>
+          <li>Different cities are observed in the same way</li>
+        </ul>
+      </div>
+    </div>
+    <div class="split classes-block">
+      <div>
+        <h3>Built types</h3>
+        <ul class="classes">
+          <li style="--c: #8b0000"><b>1</b> Compact high-rise</li>
+          <li style="--c: #ff0000"><b>2</b> Compact mid-rise</li>
+          <li style="--c: #ffa500"><b>3</b> Compact low-rise</li>
+          <li style="--c: #ffff00"><b>4</b> Open high-rise</li>
+          <li style="--c: #ffff80"><b>5</b> Open mid-rise</li>
+          <li style="--c: #ffffc0"><b>6</b> Open low-rise</li>
+          <li style="--c: #c0c0c0"><b>7</b> Lightweight low-rise</li>
+          <li style="--c: #808080"><b>8</b> Large low-rise</li>
+          <li style="--c: #ffc0cb"><b>9</b> Sparsely built</li>
+          <li style="--c: #800080"><b>10</b> Heavy industry</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Land cover types</h3>
+        <ul class="classes">
+          <li style="--c: #008000"><b>A</b> Dense trees</li>
+          <li style="--c: #00ff00"><b>B</b> Scattered trees</li>
+          <li style="--c: #80ff80"><b>C</b> Bush, scrub</li>
+          <li style="--c: #00ffff"><b>D</b> Low plants</li>
+          <li style="--c: #808000"><b>E</b> Bare rock or paved</li>
+          <li style="--c: #ffe4c4"><b>F</b> Bare soil or sand</li>
+          <li style="--c: #0000ff"><b>G</b> Water</li>
+        </ul>
+        <p class="note">The colours are the ones used in the maps on this page.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="data">
+  <div class="wrap">
+    <h2>Data</h2>
+    <p class="intro">For each city there are three rasters: Sentinel-2, PRISMA and the labels. They are aligned to
+      the Sentinel-2 grid at 10&nbsp;m, and the two images are stacked into 244 channels.</p>
+    <div class="cards">
+      <div class="card source">
+        <h3>Sentinel-2</h3>
+        <p class="kicker">Multispectral, ESA Copernicus</p>
+        <p>13 bands from visible to shortwave infrared at 10 to 60&nbsp;m, a new image every 5 days. Good for
+          vegetation, water and built-up areas.</p>
+        <p class="used">Used: 10 bands, B2 to B8A, B11 and B12</p>
+      </div>
+      <div class="card source">
+        <h3>PRISMA</h3>
+        <p class="kicker">Hyperspectral, Italian Space Agency</p>
+        <p>About 240 bands at 30&nbsp;m. The fine spectral signatures help to tell surface materials apart, such as
+          roofs, pavement and bare soil. Scenes are taken less often than with Sentinel-2.</p>
+        <p class="used">Used: 234 bands, resampled to 10&nbsp;m</p>
+      </div>
+      <div class="card source">
+        <h3>LCZ Generator</h3>
+        <p class="kicker">Labels, Demuzere et al. (2021)</p>
+        <p>LCZ maps at 100&nbsp;m, produced automatically and available worldwide, but not validated in the field.</p>
+        <p class="used">Used: resampled to 10&nbsp;m</p>
+      </div>
+    </div>
+
+    <div class="split">
+      <div>
+        <h3>From rasters to patches</h3>
+        <ol class="steps">
+          <li>Check the projection and resolution of the three rasters and reproject them onto the Sentinel-2 grid
+            where needed.</li>
+          <li>Scale Sentinel-2 rasters stored as digital numbers (reflectance &times; 10000, Berlin and Milan) to
+            reflectance, so all channels lie roughly between 0 and 1.</li>
+          <li>Stack the 10 Sentinel-2 and 234 PRISMA bands into 244 channels.</li>
+          <li>Cut patches of 64&nbsp;&times;&nbsp;64 pixels (640&nbsp;m) every 32 pixels and skip patches with missing
+            values or without any labelled pixel.</li>
+          <li>Split each city into 70&nbsp;% training, 15&nbsp;% validation and 15&nbsp;% test patches, stratified by
+            the most frequent class of a patch.</li>
+          <li>Store the patches in LMDB and their metadata in Parquet.</li>
+        </ol>
+        <p>The labels are imbalanced. Five built types (open low-rise, compact mid-rise, open mid-rise, large low-rise
+          and compact low-rise) make up about 83&nbsp;% of the labelled pixels, heavy industry 0.6&nbsp;% and water
+          0.35&nbsp;%. This is one reason for the focal loss below.</p>
+      </div>
+      <figure class="plot">
+        <a href="img/split_counts.png"><img src="img/split_counts.png" width="900" height="745" loading="lazy"
+          alt="Heatmap of patches per city and split"></a>
+        <figcaption>Patches per city and split: 4900 training, 1050 validation and 1052 test patches, 7002 in
+          total. Every city appears in all three splits.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="method">
+  <div class="wrap">
+    <h2>Method</h2>
+    <div class="split">
+      <div>
+        <h3>Model</h3>
+        <p>A U-Net with a ResNet18 encoder from
+          <a href="https://github.com/qubvel-org/segmentation_models.pytorch">segmentation_models_pytorch</a>.
+          The first convolution takes all 244 channels, and the network returns a score for each of the 18 classes
+          (17 LCZ and &ldquo;no data&rdquo;) at every pixel. With <code>--pretrained</code> the encoder starts from
+          ImageNet weights. A smaller encoder-decoder CNN is included for comparison.</p>
+        <h3>Loss</h3>
+        <p class="formula">
+          <var>L</var> = 0.7 &middot; <var>L</var><sub>CE</sub> + 0.3 &middot; <var>L</var><sub>focal</sub>,&emsp;
+          <var>L</var><sub>focal</sub> = (1 &minus; <var>p</var><sub>t</sub>)<sup>&gamma;</sup>
+          &middot; <var>L</var><sub>CE</sub>,&emsp; &gamma; = 2
+        </p>
+        <p>The focal term down-weights pixels the model already classifies with confidence, so rare and difficult
+          classes get more weight. Pixels without a label (class 0) are ignored.</p>
+      </div>
+      <div>
+        <h3>Training setup</h3>
+        <div class="table-wrap">
+          <table class="setup">
+            <tbody>
+              <tr><th>Optimizer</th><td>AdamW, learning rate 0.0005, weight decay 0.0001</td></tr>
+              <tr><th>Schedule</th><td>Main model: cosine annealing per epoch; runs of up to 50 epochs: OneCycleLR with
+                30&nbsp;% warm-up</td></tr>
+              <tr><th>Epochs</th><td>Main model: at most 150, stopped after 132, best checkpoint from epoch 117;
+                presentation and cross-city runs: at most 50</td></tr>
+              <tr><th>Early stopping</th><td>Validation mean IoU, patience 15</td></tr>
+              <tr><th>Checkpoint</th><td>Best validation mean IoU</td></tr>
+              <tr><th>Batch size</th><td>32</td></tr>
+              <tr><th>Gradient clipping</th><td>Norm 1.0</td></tr>
+              <tr><th>Augmentation</th><td>Horizontal and vertical flips, 90&deg; rotations, shift-scale-rotate,
+                brightness and contrast</td></tr>
+              <tr><th>Seed</th><td>42</td></tr>
+              <tr><th>Tools</th><td>PyTorch, PyTorch Lightning, segmentation_models_pytorch, albumentations,
+                Weights &amp; Biases</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="experiments">Experiments</h3>
+    <div class="cards">
+      <div class="card">
+        <h4>All cities (main model)</h4>
+        <p>Train for up to 150 epochs on 4900 patches (70&nbsp;% of each city), stop early on 1050 validation patches
+          and report the scores on the remaining 1052 test patches. This model produces the city maps below.</p>
+      </div>
+      <div class="card">
+        <h4>Single city</h4>
+        <p>Train on one city and test on the other two, once for each city.</p>
+      </div>
+      <div class="card">
+        <h4>Cross-city transfer</h4>
+        <p>Train on two cities and test on the third. This simulates a city for which no labels exist.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <h2>Results</h2>
+
+    <h3 id="maps">City maps of the main model</h3>
+    <p class="intro">The main model is the U-Net with ImageNet weights, trained on the training patches of all three
+      cities (see <a href="#experiments">Experiments</a>). Below are Sentinel-2 true color, the LCZ Generator labels, its
+      prediction and the errors for the same area. The maps are stitched from all patches of a city, whether they were
+      used for training, validation or testing. Where patches overlap, the class with the highest summed probability
+      wins.</p>
+    <p class="note" id="model-info"></p>
+
+    <div id="no-results" class="notice" hidden>
+      <p><strong>No exported results yet.</strong> The maps and scores are generated from a trained checkpoint.
+        Run this from the repository root to write <code>docs/results.json</code> and <code>docs/maps/</code>:</p>
+      <pre><code>python main.py --export --checkpoint path/to/checkpoint.ckpt</code></pre>
+      <p>To look at the page locally, serve the folder instead of opening the file:
+        <code>python -m http.server 8000 --directory docs</code>, then open
+        <a href="http://localhost:8000">http://localhost:8000</a>.</p>
+    </div>
+
+    <div id="viewer" class="viewer" hidden>
+      <div class="viewer-bar">
+        <div class="tabs" id="city-tabs" role="tablist" aria-label="City"></div>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
+          <button type="button" id="zoom-reset">Reset</button>
+          <span id="zoom-level">1.0&times;</span>
+        </div>
+      </div>
+      <p class="hint">Scroll or use + and &minus; to zoom, drag to pan, double-click to reset. Point at or tap a map to
+        see the true and the predicted class.</p>
+      <div class="panels" id="panels">
+        <figure class="panel">
+          <figcaption>Sentinel-2 true color</figcaption>
+          <div class="frame" data-key="s2" data-title="Sentinel-2 true color">
+            <img alt="" draggable="false" loading="lazy" decoding="async">
+          </div>
+        </figure>
+        <figure class="panel">
+          <figcaption>Ground truth</figcaption>
+          <div class="frame" data-key="label" data-title="Ground truth">
+            <img class="classmap" alt="" draggable="false" loading="lazy" decoding="async">
+          </div>
+        </figure>
+        <figure class="panel">
+          <figcaption>Prediction</figcaption>
+          <div class="frame" data-key="pred" data-title="Prediction">
+            <img class="classmap" alt="" draggable="false" loading="lazy" decoding="async">
+          </div>
+        </figure>
+        <figure class="panel">
+          <figcaption>Errors</figcaption>
+          <div class="frame" data-key="errors" data-title="Errors">
+            <img class="classmap" alt="" draggable="false" loading="lazy" decoding="async">
+          </div>
+        </figure>
+      </div>
+      <div id="map-tooltip" class="map-tooltip" hidden>
+        <div><span>Ground truth</span><b></b></div>
+        <div><span>Prediction</span><b></b></div>
+      </div>
+
+      <ul class="legend" id="legend"></ul>
+      <ul class="legend errors">
+        <li><span class="swatch" style="--c: #c8c8c8">Correct</span></li>
+        <li><span class="swatch" style="--c: #dc143c">Wrong</span></li>
+        <li><span class="swatch" style="--c: #000000">No label</span></li>
+      </ul>
+
+      <div class="scores">
+        <div>
+          <h4 id="scores-title">Scores</h4>
+          <dl class="stats">
+            <div><dt>Test accuracy</dt><dd id="stat-accuracy"></dd></div>
+            <div><dt>Test mean IoU</dt><dd id="stat-iou"></dd></div>
+            <div><dt>Patches</dt><dd id="stat-patches"></dd></div>
+            <div><dt>Map size (km)</dt><dd id="stat-size"></dd></div>
+          </dl>
+        </div>
+        <div>
+          <h4>Per split</h4>
+          <div class="table-wrap">
+            <table id="split-table">
+              <thead><tr><th>Split</th><th>Labelled pixels</th><th>Accuracy</th><th>Mean IoU</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <details class="class-scores">
+        <summary>Scores per class on the test split</summary>
+        <div class="table-wrap">
+          <table id="class-table">
+            <thead>
+              <tr><th>Class</th><th>Pixels</th><th>Precision</th><th>Recall</th><th>F1</th><th>IoU</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+      <p class="note">Scores use each patch's own prediction, like the test step of the training, and ignore pixels
+        without a label. Patches overlap by half and the split is random within each city, so test patches share
+        pixels with training patches and the test scores are optimistic. The cross-city results below are the harder
+        test.</p>
+    </div>
+
+    <h3 id="transfer">Cross-city transfer, June 2025 and now</h3>
+    <p class="intro">Train on two cities for up to 50 epochs and test on the third, which the model has never seen.
+      Model, loss and metric code are the same as in June; the data now have the fixed Sentinel-2 scaling and
+      augmentation.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <thead>
+          <tr><th>Test city</th><th>Trained on</th><th>Accuracy June 2025</th><th>Accuracy now</th>
+            <th>Mean IoU June 2025</th><th>Mean IoU now</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Berlin</td><td>Athens, Milan</td><td>0.185</td><td>0.233</td><td>0.107</td><td>0.093</td></tr>
+          <tr><td>Milan</td><td>Athens, Berlin</td><td>0.157</td><td>0.352</td><td>0.071</td><td>0.095</td></tr>
+          <tr><td>Athens</td><td>Berlin, Milan</td><td>0.156</td><td>0.120</td><td>0.026</td><td>0.048</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">June 2025: our W&amp;B runs from the course, all three made with the same code. Besides the data
+      fixes they differ from the new runs in batch size (96 instead of 32), weight decay (0.01 instead of 0.0001), class
+      weights in the loss and the missing seed, so the table shows where things stand, not what each fix did.</p>
+    <p>The accuracy is higher on Milan and Berlin and lower on Athens. The mean IoU is higher on Milan and Athens, a
+      little lower on Berlin and below 0.1 everywhere, so the model still gets most classes of an unseen city wrong. The
+      main model scores far higher because every city is part of its training data and its test patches overlap with
+      training patches. Transfer to a city without labels remains the open problem.</p>
+
+    <h3>Results from the final presentation (June 2025)</h3>
+    <p class="intro">We made these figures for our final presentation with the code of June 2025, not with the model
+      above.</p>
+
+    <figure class="plot">
+      <a href="img/single_city.png"><img src="img/single_city.png" width="1600" height="306" loading="lazy"
+        alt="Bar charts of accuracy, IoU and Dice for models trained on Athens, Berlin and Milan"></a>
+      <figcaption>Single-city training: accuracy, IoU and Dice on the two unseen cities for models trained on Athens,
+        Berlin and Milan (from left to right).</figcaption>
+    </figure>
+
+    <div class="split">
+      <figure class="plot">
+        <a href="img/cross_city.png"><img src="img/cross_city.png" width="989" height="590" loading="lazy"
+          alt="Bar chart of accuracy, mean IoU and mean Dice per test city in the cross-city experiments"></a>
+        <figcaption>Cross-city transfer: accuracy, mean IoU and mean Dice on the city that was left out of
+          training.</figcaption>
+      </figure>
+      <div>
+        <p>Trained on two cities, the model reached an accuracy of 0.18 on Berlin, 0.17 on Milan and 0.05 on Athens,
+          with a mean IoU of 0.11, 0.08 and 0.01. With this setup, the transfer to a city without labels does not
+          work yet. The chart was made with evaluation code that is no longer in the repository, so the W&amp;B test
+          values in the table above differ slightly.</p>
+        <p>Averaged over the three cross-city runs, most errors go to two classes. Dense trees (46&nbsp;%), open
+          low-rise (42&nbsp;%) and open mid-rise (35&nbsp;%) were predicted as scattered trees; heavy industry
+          (36&nbsp;%) and compact mid-rise (34&nbsp;%) as open mid-rise.</p>
+      </div>
+    </div>
+
+    <figure class="plot narrow">
+      <a href="img/cross_city_samples.jpg"><img src="img/cross_city_samples.jpg" width="1187" height="624"
+        loading="lazy" alt="Three test patches: two Sentinel-2 composites, ground truth, prediction and a legend"></a>
+      <figcaption>Cross-city test patches. Rows: Berlin (trained on Athens and Milan), Milan (trained on Berlin and
+        Athens), Athens (trained on Milan and Berlin). Columns: Sentinel-2 composites B5/B4/B3 and B8A/B5/B4, ground
+        truth, prediction.</figcaption>
+    </figure>
+
+    <figure class="plot narrow">
+      <a href="img/per_class_f1.png"><img src="img/per_class_f1.png" width="1112" height="788" loading="lazy"
+        alt="Heatmap of the F1 score per class for nine train and test scenarios"></a>
+      <figcaption>F1 per class for all nine train &rarr; test scenarios. Lightweight low-rise and bush/scrub are
+        0 everywhere.</figcaption>
+    </figure>
+
+    <figure class="plot narrow">
+      <a href="img/confusion_berlin.png"><img src="img/confusion_berlin.png" width="1300" height="1177"
+        loading="lazy" alt="Row-normalised confusion matrix for Berlin"></a>
+      <figcaption>Row-normalised confusion matrix for Berlin, trained on Athens and Milan; rows are the true classes.
+        Most pixels are predicted as scattered trees or open mid-rise: 98&nbsp;% of dense trees and 92&nbsp;% of open
+        low-rise end up as scattered trees, 85&nbsp;% of compact mid-rise as open mid-rise, while open mid-rise itself
+        is only 29&nbsp;% correct.</figcaption>
+    </figure>
+
+    <details class="caveats">
+      <summary>Notes on these figures</summary>
+      <ul>
+        <li>In the single-city chart the bars of a test city are identical whichever city the model was trained on,
+          while the per-class F1 values of the same scenarios differ and are close to 0 for Athens. The chart most
+          likely shows one model evaluated city by city rather than three separate single-city runs, which would
+          also explain why it is so much higher than the cross-city results.</li>
+        <li>The Dice values cannot be reproduced with the current code, which does not compute Dice, and they do not
+          fit the IoU values next to them: with the same averaging, a mean IoU of 0.25 allows a mean Dice of at most
+          0.40.</li>
+        <li>The two Sentinel-2 columns of the sample figure were labelled true and false color in the presentation.
+          Because of a band index bug that has since been fixed, they show B5/B4/B3 and B8A/B5/B4.</li>
+        <li>Lightweight low-rise has no pixels in any of these matrices, so its F1 of 0 says nothing about the
+          model. The Berlin test data contain no bush/scrub either.</li>
+        <li>Two data problems affected the June 2025 runs: the Sentinel-2 rasters of Berlin and Milan held digital
+          numbers while the one of Athens held reflectance, and the brightness augmentation clipped the digital numbers
+          to 1, which wiped out the Sentinel-2 bands of about half of the Berlin and Milan training patches. Both are
+          fixed now, see <a href="#transfer">the comparison above</a>.</li>
+      </ul>
+    </details>
+
+    <h3>What worked and what did not</h3>
+    <p class="intro">Our own summary at the end of the presentation.</p>
+    <div class="split">
+      <div class="card">
+        <h4>Worked</h4>
+        <ul>
+          <li>Sentinel-2, PRISMA and the LCZ labels were aligned consistently and combined into one dataset.</li>
+          <li>Single-city training improved steadily over the course of the project.</li>
+          <li>Looking at the maps next to the metrics showed where and how the model fails.</li>
+          <li>We divided the work clearly within the team.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Did not work, or not yet</h4>
+        <ul>
+          <li>Performance drops sharply when the test city is not part of the training data.</li>
+          <li>Rare classes such as heavy industry or bush/scrub are poorly predicted.</li>
+          <li>There was no time to try other architectures, such as transformers or multi-branch CNNs.</li>
+          <li>The dataset is small: three cities and about 7000 patches.</li>
+          <li>The labels have not been validated in the field.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>What I found after the course</h3>
+    <ul>
+      <li>Check the value range of every input in every city. The Sentinel-2 rasters of Berlin and Milan held digital
+        numbers while the one of Athens held reflectance, and the brightness augmentation clipped the digital numbers
+        to 1, which wiped out their Sentinel-2 bands in about half of the training patches. Nothing crashed; the model
+        simply trained on broken inputs.</li>
+      <li>The evaluation had bugs of its own: the test report logged zeros as soon as a pixel was predicted as no data,
+        it only covered the first 20 test batches, and the plots used the wrong Sentinel-2 bands. Training was not
+        seeded either, so runs could not be repeated.</li>
+      <li>The main model profits from longer training: with 150 instead of 50 epochs, which also switches from
+        OneCycleLR to cosine annealing, the test accuracy rose from 0.706 to 0.735 and the mean IoU from 0.383 to
+        0.431.</li>
+      <li>Next I would bring the rasters of all cities to the same statistics and add more cities to help the transfer,
+        and test the main model on areas that are spatially separated from its training patches, so that its scores
+        are no longer optimistic.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="run">
+  <div class="wrap">
+    <h2>Run it yourself</h2>
+    <p class="intro">The rasters are not part of the repository. Place them as
+      <code>data/&lt;City&gt;/LCZ_Map.tif</code>, <code>PRISMA_30.tif</code> and <code>S2.tif</code>; paths can be
+      changed in <code>.env</code>. The <a href="https://github.com/KonradJKl/MLCZ-Pipeline#readme">README</a> has the
+      details, including the CPU build of PyTorch and how to run single experiments such as cross-city
+      training.</p>
+<pre><code><span class="comment"># Install, PyTorch first (CUDA 12.8 build)</span>
+git clone https://github.com/KonradJKl/MLCZ-Pipeline.git
+cd MLCZ-Pipeline
+pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+pip install -r requirements.txt
+
+<span class="comment"># Align the rasters, cut the patches and split them into processed/</span>
+python main.py --convert
+
+<span class="comment"># Train the main model, checkpoints go to logs/</span>
+python modules/experiments.py --arch_name unet --pretrained --epochs 150 --lmdb_path processed/MLCZ.lmdb --metadata_parquet_path processed/MLCZ.parquet
+
+<span class="comment"># Or the four comparison runs: U-Net pretrained and from scratch, small CNN with and without dropout</span>
+python main.py --train
+
+<span class="comment"># Write results.json and the maps for this page into docs/</span>
+python main.py --export --checkpoint logs/MLCZ-Pipeline-Server/&lt;run id&gt;/checkpoints/&lt;file&gt;.ckpt
+
+<span class="comment"># Local dashboard with the same maps</span>
+streamlit run app.py</code></pre>
+  </div>
+</section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>Our team project as Group&nbsp;2 (Sona, Sohane, Pegah, Mahila, Samy and me, Konrad Kloska) at the Erasmus+ BIP &ldquo;Machine
+      Learning for Earth Observation Data Processing and Fusion&rdquo;, Pavia, June 2025.
+      Code on <a href="https://github.com/KonradJKl/MLCZ-Pipeline">GitHub</a>.</p>
+    <p id="export-info">The city maps have not been exported yet.</p>
+    <p>Contains modified Copernicus Sentinel data 2025. Project carried out using ORIGINAL PRISMA Products,
+      &copy; Italian Space Agency (ASI), delivered under an ASI license to use. This page shows no PRISMA imagery,
+      only Sentinel-2 images and maps derived from the models.</p>
+    <p>Labels from the LCZ Generator: Demuzere et al. (2021), Front. Environ. Sci. 9:637455,
+      <a href="https://doi.org/10.3389/fenvs.2021.637455">https://doi.org/10.3389/fenvs.2021.637455</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

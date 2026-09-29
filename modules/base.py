@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Tuple
 
 
 class CombinedLoss(nn.Module):
-    """Combined loss function optimized for LCZ segmentation"""
+    """Weighted sum of cross-entropy and focal loss"""
 
     def __init__(self, num_classes, ignore_index=0, alpha=0.7, gamma=2.0, class_weights=None):
         super().__init__()
@@ -21,7 +21,6 @@ class CombinedLoss(nn.Module):
         self.alpha = alpha  # Weight between CE and Focal loss
         self.gamma = gamma  # Focal loss gamma parameter
 
-        # Cross-entropy loss with optional class weights
         self.ce_loss = nn.CrossEntropyLoss(
             ignore_index=ignore_index,
             weight=class_weights
@@ -35,7 +34,6 @@ class CombinedLoss(nn.Module):
         return focal_loss.mean()
 
     def forward(self, inputs, targets):
-        # Combined cross-entropy and focal loss
         ce = self.ce_loss(inputs, targets)
         focal = self.focal_loss(inputs, targets)
 
@@ -52,57 +50,47 @@ class BaseModel(L.LightningModule):
 
         self.datamodule = datamodule
 
-        # Enhanced criterion
         self.criterion = self.init_enhanced_criterion()
 
-        # Enhanced metrics
         self.train_metrics = self.init_enhanced_metrics()
         self.val_metrics = self.init_enhanced_metrics()
         self.test_metrics = self.init_enhanced_metrics()
 
-        # For learning rate scheduling
         self.automatic_optimization = True
 
     def forward(self, x):
         return self.model(x)
 
     def _shared_step(self, batch: Tuple[torch.Tensor, torch.Tensor], stage: str) -> Dict[str, Any]:
-        """Enhanced shared step logic for train/val/test"""
+        """Shared step for train, val and test"""
         x, y = batch
 
-        # Forward pass
         logits = self(x)
 
-        # Handle different output formats (some models return dict, others tensor)
+        # Some segmentation models return a dict instead of a tensor
         if isinstance(logits, dict):
-            logits = logits['out']  # For some segmentation models
+            logits = logits['out']
 
-        # Ensure logits and targets have compatible shapes
+        # Make logits and targets shapes compatible
         if logits.dim() == 4 and y.dim() == 3:
-            # logits: (B, C, H, W), y: (B, H, W) - this is correct
+            # logits (B, C, H, W), y (B, H, W)
             pass
         elif logits.dim() == 4 and y.dim() == 4:
-            # logits: (B, C, H, W), y: (B, 1, H, W) - squeeze y
+            # logits (B, C, H, W), y (B, 1, H, W)
             y = y.squeeze(1)
         else:
             raise ValueError(f"Incompatible shapes: logits {logits.shape}, targets {y.shape}")
 
-        # Calculate loss
         loss = self.criterion(logits, y)
 
-        # Get predictions for metrics
         preds = torch.argmax(logits, dim=1)
 
-        # Update metrics
         metrics = getattr(self, f'{stage}_metrics')
         metrics.update(preds, y)
 
-        # Enhanced logging
         self.log(f'{stage}_loss', loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
 
-        # Log additional info for training
         if stage == 'train':
-            # Log learning rate
             current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
             self.log('learning_rate', current_lr, on_step=True, on_epoch=False)
 
@@ -136,7 +124,7 @@ class BaseModel(L.LightningModule):
 
     def _get_class_name(self, class_idx: int) -> str:
         """Get class name for logging"""
-        # LCZ class names for better interpretability
+        # LCZ class names used in the per-class metric keys
         lcz_names = {
             0: 'background',
             1: 'compact_high_rise', 2: 'compact_mid_rise', 3: 'compact_low_rise',
@@ -154,7 +142,7 @@ class BaseModel(L.LightningModule):
     ########################
 
     def configure_optimizers(self):
-        """Enhanced optimizer configuration"""
+        """AdamW with a learning rate scheduler chosen by the number of epochs"""
         optimizer = AdamW(
             self.model.parameters(),
             lr=self.args.learning_rate,
@@ -163,7 +151,6 @@ class BaseModel(L.LightningModule):
             eps=1e-8
         )
 
-        # Choose learning rate scheduler based on epochs
         total_steps = self.args.epochs * len(self.datamodule.train_dataloader())
 
         if self.args.epochs <= 50:
@@ -199,61 +186,57 @@ class BaseModel(L.LightningModule):
         }
 
     def calculate_class_weights(self):
-        """Calculate class weights from training data for balanced training"""
-        print("🔍 Calculating class weights from training data...")
+        """Inverse frequency class weights from up to 100 training batches"""
+        print("Calculating class weights from training data...")
 
         class_counts = torch.zeros(self.args.num_classes)
         total_pixels = 0
 
-        # Sample from training dataloader to get class distribution
         train_loader = self.datamodule.train_dataloader()
-        sample_size = min(100, len(train_loader))  # Sample first 100 batches
+        sample_size = min(100, len(train_loader))
 
         for i, (_, targets) in enumerate(train_loader):
             if i >= sample_size:
                 break
 
-            # Count classes in this batch
             for class_idx in range(self.args.num_classes):
                 class_counts[class_idx] += (targets == class_idx).sum().item()
             total_pixels += targets.numel()
 
-        # Calculate inverse frequency weights
         class_weights = total_pixels / (self.args.num_classes * class_counts)
-        class_weights[class_counts == 0] = 0  # Handle classes with no samples
+        class_weights[class_counts == 0] = 0  # Classes without pixels get weight 0
 
-        # Normalize weights
+        # Normalize so the weights sum to num_classes
         class_weights = class_weights / class_weights.sum() * self.args.num_classes
 
-        print(f"   Class weights calculated: {class_weights}")
+        print(f"  Class weights: {class_weights}")
         return class_weights
 
     def init_enhanced_criterion(self):
-        """Initialize enhanced loss function"""
+        """Combined CE and focal loss, optionally with class weights"""
         class_weights = None
 
-        # Calculate class weights if requested
         if hasattr(self.args, 'class_weights') and self.args.class_weights:
             try:
                 class_weights = self.calculate_class_weights()
                 class_weights = class_weights.to(self.device)
             except Exception as e:
-                print(f"⚠️ Could not calculate class weights: {e}")
+                print(f"Could not calculate class weights: {e}")
                 class_weights = None
 
-        # Use combined loss for better performance on imbalanced data
+        # Focal loss part helps with the imbalanced LCZ classes
         criterion = CombinedLoss(
             num_classes=self.args.num_classes,
             ignore_index=0,
             alpha=0.7,  # Balance between CE and focal loss
-            gamma=2.0,  # Focal loss gamma
+            gamma=2.0,
             class_weights=class_weights
         )
 
         return criterion
 
     def init_enhanced_metrics(self):
-        """Initialize enhanced metrics for LCZ segmentation"""
+        """Accuracy, IoU and F1 metrics, ignoring the background class 0"""
         metrics = MetricCollection({
             # Accuracy metrics
             'accuracy': Accuracy(
@@ -328,7 +311,7 @@ class BaseModel(L.LightningModule):
     #################
 
     def _log_epoch_metrics(self, stage: str) -> None:
-        """Helper to compute and log metrics at epoch end"""
+        """Compute, log and reset the metrics of one stage"""
         metrics = getattr(self, f'{stage}_metrics')
         computed_metrics = metrics.compute()
 
@@ -337,23 +320,18 @@ class BaseModel(L.LightningModule):
                 # Scalar metric
                 self.log(f'{stage}_{metric_name}', metric_value, sync_dist=True)
             elif metric_value.dim() == 1:
-                # Per-class metric
+                # Per-class metric, log the mean and one value per class
                 if len(metric_value) == self.args.num_classes:
-                    # Log mean
                     mean_val = metric_value.mean()
                     self.log(f'{stage}_{metric_name}_mean', mean_val, sync_dist=True)
 
-                    # Log per-class values
                     for i, val in enumerate(metric_value):
                         class_name = self._get_class_name(i)
                         self.log(f'{stage}_{metric_name}_{class_name}', val, sync_dist=True)
                 else:
-                    # Just log the mean for other cases
                     self.log(f'{stage}_{metric_name}', metric_value.mean(), sync_dist=True)
 
-        # Reset metrics for next epoch
         metrics.reset()
-
 
     ####################
     # DATA RELATED HOOKS
@@ -369,8 +347,7 @@ class BaseModel(L.LightningModule):
         return self.datamodule.test_dataloader()
 
     def on_before_optimizer_step(self, optimizer, optimizer_idx=0):
-        """Called before optimizer step - useful for gradient monitoring"""
-        # Log gradient norms if needed
+        """Log the total gradient norm if args.log_gradients is set"""
         if hasattr(self.args, 'log_gradients') and self.args.log_gradients:
             total_norm = 0
             for p in self.model.parameters():

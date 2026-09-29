@@ -1,0 +1,600 @@
+{
+ "model": {
+  "arch": "unet",
+  "description": "U-Net with a ResNet18 encoder",
+  "pretrained": true,
+  "epochs": 150,
+  "learning_rate": 0.0005,
+  "weight_decay": 0.0001,
+  "batch_size": 32,
+  "train_cities": [
+   "Athens",
+   "Berlin",
+   "Milan"
+  ],
+  "test_cities": [
+   "Athens",
+   "Berlin",
+   "Milan"
+  ],
+  "seed": 42,
+  "checkpoint": "43n2c2vy/epoch=116-step=18018.ckpt",
+  "exported": "2026-09-29"
+ },
+ "classes": [
+  {
+   "id": 0,
+   "code": "",
+   "name": "No data",
+   "color": "#000000"
+  },
+  {
+   "id": 1,
+   "code": "1",
+   "name": "Compact high-rise",
+   "color": "#8b0000"
+  },
+  {
+   "id": 2,
+   "code": "2",
+   "name": "Compact mid-rise",
+   "color": "#ff0000"
+  },
+  {
+   "id": 3,
+   "code": "3",
+   "name": "Compact low-rise",
+   "color": "#ffa500"
+  },
+  {
+   "id": 4,
+   "code": "4",
+   "name": "Open high-rise",
+   "color": "#ffff00"
+  },
+  {
+   "id": 5,
+   "code": "5",
+   "name": "Open mid-rise",
+   "color": "#ffff80"
+  },
+  {
+   "id": 6,
+   "code": "6",
+   "name": "Open low-rise",
+   "color": "#ffffc0"
+  },
+  {
+   "id": 7,
+   "code": "7",
+   "name": "Lightweight low-rise",
+   "color": "#c0c0c0"
+  },
+  {
+   "id": 8,
+   "code": "8",
+   "name": "Large low-rise",
+   "color": "#808080"
+  },
+  {
+   "id": 9,
+   "code": "9",
+   "name": "Sparsely built",
+   "color": "#ffc0cb"
+  },
+  {
+   "id": 10,
+   "code": "10",
+   "name": "Heavy industry",
+   "color": "#800080"
+  },
+  {
+   "id": 11,
+   "code": "A",
+   "name": "Dense trees",
+   "color": "#008000"
+  },
+  {
+   "id": 12,
+   "code": "B",
+   "name": "Scattered trees",
+   "color": "#00ff00"
+  },
+  {
+   "id": 13,
+   "code": "C",
+   "name": "Bush/scrub",
+   "color": "#80ff80"
+  },
+  {
+   "id": 14,
+   "code": "D",
+   "name": "Low plants",
+   "color": "#00ffff"
+  },
+  {
+   "id": 15,
+   "code": "E",
+   "name": "Bare rock/paved",
+   "color": "#808000"
+  },
+  {
+   "id": 16,
+   "code": "F",
+   "name": "Bare soil/sand",
+   "color": "#ffe4c4"
+  },
+  {
+   "id": 17,
+   "code": "G",
+   "name": "Water",
+   "color": "#0000ff"
+  }
+ ],
+ "cities": [
+  {
+   "name": "Athens",
+   "slug": "athens",
+   "patches": 3456,
+   "width": 1984,
+   "height": 1920,
+   "splits": {
+    "train": {
+     "pixels": 9734729,
+     "accuracy": 0.8039,
+     "mean_iou": 0.4008
+    },
+    "validation": {
+     "pixels": 2096890,
+     "accuracy": 0.7816,
+     "mean_iou": 0.3685
+    },
+    "test": {
+     "pixels": 2096211,
+     "accuracy": 0.784,
+     "mean_iou": 0.3707
+    }
+   },
+   "test_classes": [
+    {
+     "id": 1,
+     "pixels": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "iou": 0.0
+    },
+    {
+     "id": 2,
+     "pixels": 293345,
+     "precision": 0.7964,
+     "recall": 0.6516,
+     "f1": 0.7168,
+     "iou": 0.5586
+    },
+    {
+     "id": 3,
+     "pixels": 626027,
+     "precision": 0.7783,
+     "recall": 0.8527,
+     "f1": 0.8138,
+     "iou": 0.686
+    },
+    {
+     "id": 4,
+     "pixels": 1269,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "iou": 0.0
+    },
+    {
+     "id": 5,
+     "pixels": 59865,
+     "precision": 0.5752,
+     "recall": 0.2614,
+     "f1": 0.3595,
+     "iou": 0.2191
+    },
+    {
+     "id": 6,
+     "pixels": 632203,
+     "precision": 0.8018,
+     "recall": 0.873,
+     "f1": 0.8359,
+     "iou": 0.718
+    },
+    {
+     "id": 8,
+     "pixels": 305062,
+     "precision": 0.8449,
+     "recall": 0.757,
+     "f1": 0.7985,
+     "iou": 0.6646
+    },
+    {
+     "id": 9,
+     "pixels": 26446,
+     "precision": 0.5152,
+     "recall": 0.6932,
+     "f1": 0.5911,
+     "iou": 0.4196
+    },
+    {
+     "id": 10,
+     "pixels": 9175,
+     "precision": 0.4801,
+     "recall": 0.4281,
+     "f1": 0.4526,
+     "iou": 0.2925
+    },
+    {
+     "id": 11,
+     "pixels": 80293,
+     "precision": 0.8307,
+     "recall": 0.8206,
+     "f1": 0.8256,
+     "iou": 0.703
+    },
+    {
+     "id": 12,
+     "pixels": 30296,
+     "precision": 0.4669,
+     "recall": 0.462,
+     "f1": 0.4644,
+     "iou": 0.3025
+    },
+    {
+     "id": 13,
+     "pixels": 758,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "iou": 0.0
+    },
+    {
+     "id": 14,
+     "pixels": 18345,
+     "precision": 0.754,
+     "recall": 0.5316,
+     "f1": 0.6236,
+     "iou": 0.4531
+    },
+    {
+     "id": 15,
+     "pixels": 1250,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "iou": 0.0
+    },
+    {
+     "id": 16,
+     "pixels": 5408,
+     "precision": 0.3543,
+     "recall": 0.5895,
+     "f1": 0.4426,
+     "iou": 0.2842
+    },
+    {
+     "id": 17,
+     "pixels": 6469,
+     "precision": 0.7777,
+     "recall": 0.7684,
+     "f1": 0.773,
+     "iou": 0.63
+    }
+   ],
+   "images": {
+    "s2": "maps/athens_s2.jpg",
+    "label": "maps/athens_label.png",
+    "pred": "maps/athens_pred.png",
+    "errors": "maps/athens_errors.png"
+   }
+  },
+  {
+   "name": "Berlin",
+   "slug": "berlin",
+   "patches": 1482,
+   "width": 1280,
+   "height": 1248,
+   "splits": {
+    "train": {
+     "pixels": 4247071,
+     "accuracy": 0.7007,
+     "mean_iou": 0.4099
+    },
+    "validation": {
+     "pixels": 909312,
+     "accuracy": 0.6661,
+     "mean_iou": 0.3841
+    },
+    "test": {
+     "pixels": 912927,
+     "accuracy": 0.6607,
+     "mean_iou": 0.3583
+    }
+   },
+   "test_classes": [
+    {
+     "id": 1,
+     "pixels": 17358,
+     "precision": 0.4304,
+     "recall": 0.5497,
+     "f1": 0.4828,
+     "iou": 0.3182
+    },
+    {
+     "id": 2,
+     "pixels": 158401,
+     "precision": 0.7078,
+     "recall": 0.8112,
+     "f1": 0.756,
+     "iou": 0.6077
+    },
+    {
+     "id": 3,
+     "pixels": 6821,
+     "precision": 0.5003,
+     "recall": 0.1273,
+     "f1": 0.2029,
+     "iou": 0.1129
+    },
+    {
+     "id": 4,
+     "pixels": 108898,
+     "precision": 0.5429,
+     "recall": 0.4567,
+     "f1": 0.4961,
+     "iou": 0.3299
+    },
+    {
+     "id": 5,
+     "pixels": 266341,
+     "precision": 0.6681,
+     "recall": 0.699,
+     "f1": 0.6832,
+     "iou": 0.5188
+    },
+    {
+     "id": 6,
+     "pixels": 148167,
+     "precision": 0.7042,
+     "recall": 0.7709,
+     "f1": 0.736,
+     "iou": 0.5823
+    },
+    {
+     "id": 8,
+     "pixels": 104926,
+     "precision": 0.7008,
+     "recall": 0.6027,
+     "f1": 0.648,
+     "iou": 0.4793
+    },
+    {
+     "id": 9,
+     "pixels": 1021,
+     "precision": 0.1344,
+     "recall": 0.0686,
+     "f1": 0.0908,
+     "iou": 0.0476
+    },
+    {
+     "id": 10,
+     "pixels": 25178,
+     "precision": 0.5191,
+     "recall": 0.3325,
+     "f1": 0.4054,
+     "iou": 0.2542
+    },
+    {
+     "id": 11,
+     "pixels": 22994,
+     "precision": 0.6535,
+     "recall": 0.3777,
+     "f1": 0.4787,
+     "iou": 0.3146
+    },
+    {
+     "id": 12,
+     "pixels": 34674,
+     "precision": 0.5519,
+     "recall": 0.5215,
+     "f1": 0.5363,
+     "iou": 0.3664
+    },
+    {
+     "id": 14,
+     "pixels": 13293,
+     "precision": 0.7379,
+     "recall": 0.9573,
+     "f1": 0.8334,
+     "iou": 0.7144
+    },
+    {
+     "id": 15,
+     "pixels": 862,
+     "precision": 0.4545,
+     "recall": 0.319,
+     "f1": 0.3749,
+     "iou": 0.2307
+    },
+    {
+     "id": 16,
+     "pixels": 60,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "iou": 0.0
+    },
+    {
+     "id": 17,
+     "pixels": 3933,
+     "precision": 0.6427,
+     "recall": 0.6878,
+     "f1": 0.6645,
+     "iou": 0.4975
+    }
+   ],
+   "images": {
+    "s2": "maps/berlin_s2.jpg",
+    "label": "maps/berlin_label.png",
+    "pred": "maps/berlin_pred.png",
+    "errors": "maps/berlin_errors.png"
+   }
+  },
+  {
+   "name": "Milan",
+   "slug": "milan",
+   "patches": 2064,
+   "width": 1504,
+   "height": 1504,
+   "splits": {
+    "train": {
+     "pixels": 5914624,
+     "accuracy": 0.7447,
+     "mean_iou": 0.3905
+    },
+    "validation": {
+     "pixels": 1269760,
+     "accuracy": 0.7012,
+     "mean_iou": 0.3606
+    },
+    "test": {
+     "pixels": 1269760,
+     "accuracy": 0.7066,
+     "mean_iou": 0.3323
+    }
+   },
+   "test_classes": [
+    {
+     "id": 1,
+     "pixels": 8229,
+     "precision": 0.555,
+     "recall": 0.5795,
+     "f1": 0.567,
+     "iou": 0.3957
+    },
+    {
+     "id": 2,
+     "pixels": 231177,
+     "precision": 0.7702,
+     "recall": 0.8987,
+     "f1": 0.8295,
+     "iou": 0.7087
+    },
+    {
+     "id": 3,
+     "pixels": 13405,
+     "precision": 0.4299,
+     "recall": 0.1114,
+     "f1": 0.1769,
+     "iou": 0.097
+    },
+    {
+     "id": 4,
+     "pixels": 33508,
+     "precision": 0.4525,
+     "recall": 0.0668,
+     "f1": 0.1164,
+     "iou": 0.0618
+    },
+    {
+     "id": 5,
+     "pixels": 369288,
+     "precision": 0.7045,
+     "recall": 0.7502,
+     "f1": 0.7267,
+     "iou": 0.5707
+    },
+    {
+     "id": 6,
+     "pixels": 104876,
+     "precision": 0.5222,
+     "recall": 0.4459,
+     "f1": 0.4811,
+     "iou": 0.3167
+    },
+    {
+     "id": 8,
+     "pixels": 284382,
+     "precision": 0.7344,
+     "recall": 0.6921,
+     "f1": 0.7126,
+     "iou": 0.5536
+    },
+    {
+     "id": 9,
+     "pixels": 21930,
+     "precision": 0.358,
+     "recall": 0.1365,
+     "f1": 0.1976,
+     "iou": 0.1096
+    },
+    {
+     "id": 10,
+     "pixels": 2354,
+     "precision": 0.2936,
+     "recall": 0.068,
+     "f1": 0.1104,
+     "iou": 0.0584
+    },
+    {
+     "id": 11,
+     "pixels": 1869,
+     "precision": 0.1827,
+     "recall": 0.0102,
+     "f1": 0.0193,
+     "iou": 0.0097
+    },
+    {
+     "id": 12,
+     "pixels": 83760,
+     "precision": 0.6393,
+     "recall": 0.6962,
+     "f1": 0.6665,
+     "iou": 0.4998
+    },
+    {
+     "id": 14,
+     "pixels": 106566,
+     "precision": 0.7493,
+     "recall": 0.8828,
+     "f1": 0.8106,
+     "iou": 0.6815
+    },
+    {
+     "id": 15,
+     "pixels": 753,
+     "precision": 0.3457,
+     "recall": 0.4834,
+     "f1": 0.4031,
+     "iou": 0.2524
+    },
+    {
+     "id": 16,
+     "pixels": 1779,
+     "precision": 0.6241,
+     "recall": 0.0467,
+     "f1": 0.0868,
+     "iou": 0.0454
+    },
+    {
+     "id": 17,
+     "pixels": 5884,
+     "precision": 0.8144,
+     "recall": 0.7271,
+     "f1": 0.7682,
+     "iou": 0.6237
+    }
+   ],
+   "images": {
+    "s2": "maps/milan_s2.jpg",
+    "label": "maps/milan_label.png",
+    "pred": "maps/milan_pred.png",
+    "errors": "maps/milan_errors.png"
+   }
+  }
+ ]
+}
