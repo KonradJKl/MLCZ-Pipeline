@@ -1,6 +1,6 @@
 # MLCZ-Pipeline
 
-Semantic segmentation of Local Climate Zones (LCZ) in Athens, Berlin and Milan from Sentinel-2 and PRISMA hyperspectral imagery. A U-Net with a ResNet18 encoder assigns an LCZ class to every 10 m pixel and is trained on maps from the LCZ Generator. The project started as a team project at an Erasmus+ Blended Intensive Programme in Pavia in June 2025.
+Semantic segmentation of Local Climate Zones (LCZ) in Athens, Berlin and Milan from Sentinel-2 and PRISMA hyperspectral imagery. A U-Net with a ResNet18 encoder assigns an LCZ class to every 10 m pixel and is trained on labels from the Global LCZ map (Demuzere et al. 2022). The project started as a team project at an Erasmus+ Blended Intensive Programme in Pavia in June 2025.
 
 **Main model:** the U-Net with ImageNet weights, trained for up to 150 epochs on the training patches of all three cities (4900 patches of 64 x 64 pixels, 70 % of each city). Early stopping and the choice of the checkpoint use 1050 validation patches. On the remaining 1052 test patches it reaches an accuracy of 0.735 and a mean IoU of 0.431 over the LCZ classes. Separate cross-city runs train on two cities and test on the third, see [Results](#results).
 
@@ -8,9 +8,9 @@ Semantic segmentation of Local Climate Zones (LCZ) in Athens, Berlin and Milan f
 
 The rasters are not included. [Getting started](#getting-started) explains where to get them and how to run the conversion, training, export and dashboard.
 
-![Berlin: Sentinel-2 true color, LCZ Generator labels and the predicted map](docs/maps/overview.png)
+![Berlin: Sentinel-2 true color, LCZ labels and the predicted map](docs/maps/overview.png)
 
-*Berlin, from left to right: Sentinel-2 true color, labels from the LCZ Generator and the prediction of the U-Net, stitched from all patches of the city.*
+*Berlin, from left to right: Sentinel-2 true color, labels from the Global LCZ map and the prediction of the U-Net, stitched from all patches of the city.*
 
 ## About the project
 
@@ -37,7 +37,7 @@ After the programme I cleaned up and extended the code:
 |---|---|---|
 | Sentinel-2 | 10 bands: B2, B3, B4, B5, B6, B7, B8, B8A, B11, B12 | 10 m and 20 m bands, all at 10 m in the input raster |
 | PRISMA | 234 hyperspectral bands | 30 m, resampled to 10 m |
-| LCZ Generator | one LCZ class per pixel, used as labels | 100 m map, provided on the 10 m grid |
+| Global LCZ map | one LCZ class per pixel, used as labels | 100 m map, provided on the 10 m grid |
 
 For each city, `modules/convert_data.py` checks that the three rasters share CRS, resolution and extent. If they don't, it reprojects all three onto the Sentinel-2 grid (bilinear for the images, nearest neighbour for the labels), cropped to the area that all three cover. It then cuts 64 x 64 pixel patches (640 m) every 32 pixels, so neighbouring patches overlap by half, and skips patches with missing values or without any labelled pixel. Each patch holds 244 channels, the 10 Sentinel-2 bands followed by the 234 PRISMA bands, and a label mask. Sentinel-2 rasters stored as digital numbers (reflectance x 10000, Berlin and Milan here) are scaled to reflectance, so all channels lie roughly between 0 and 1; there is no further normalisation.
 
@@ -68,9 +68,9 @@ data/
 
 The folder name becomes the city name; it must not contain underscores, because the patch keys are split at `_`. The label raster needs "lcz" or "label" in its file name, the PRISMA raster "prisma" and the Sentinel-2 raster "s2" or "sentinel". Sentinel-2 can be stored as reflectance or as digital numbers (reflectance x 10000); the conversion scales the latter. The rasters used here were clipped to the city areas and projected to the local UTM zone beforehand; that step is not part of this repository.
 
-- Sentinel-2: Copernicus Data Space Ecosystem, https://dataspace.copernicus.eu
+- Sentinel-2: freely available, for example from the Copernicus Data Space Ecosystem, https://dataspace.copernicus.eu
 - PRISMA: PRISMA portal of the Italian Space Agency, https://prisma.asi.it (registration and an ASI license required)
-- LCZ maps: LCZ Generator, https://lcz-generator.rub.de
+- LCZ labels: Global map of Local Climate Zones, the unfiltered map `lcz_v1.tif` from https://doi.org/10.5281/zenodo.6364594, with a viewer at https://lcz-generator.rub.de/global-lcz-map
 
 ## Model and training
 
@@ -351,11 +351,12 @@ MLCZ-Pipeline/
 
 ## Acknowledgements and data attribution
 
-Thanks to the organisers and lecturers of the BIP in Pavia and to my team: Sona, Sohane, Pegah, Mahila and Samy.
+The code in this repository was developed as a result of our work in the Erasmus+ BIP "Machine Learning for Earth Observation Data Processing and Fusion" in Pavia, June 2025, and extended by me afterwards. Thanks to the organisers and lecturers of the BIP and to my team: Sona, Sohane, Pegah, Mahila and Samy.
 
-- Contains modified Copernicus Sentinel data 2025.
-- Project carried out using ORIGINAL PRISMA Products, © Italian Space Agency (ASI), delivered under an ASI license to use. PRISMA data are not included in this repository, and the results page shows no PRISMA imagery, only Sentinel-2 images and maps derived from the model.
-- LCZ labels from the LCZ Generator: Demuzere, M., Kittner, J., Bechtel, B. (2021). LCZ Generator: A Web Application to Create Local Climate Zone Maps. Frontiers in Environmental Science 9:637455. https://doi.org/10.3389/fenvs.2021.637455
+- Contains modified Copernicus Sentinel data (acquisition date not recorded; data obtained in May 2025).
+- Project carried out using ORIGINAL PRISMA Products - © Italian Space Agency (ASI); the Products have been delivered under an ASI License to Use. PRISMA data are not included in this repository, and the results page shows no PRISMA imagery, only Sentinel-2 images, the LCZ labels and maps derived from the models.
+- LCZ labels: Demuzere, M., Kittner, J., Martilli, A., Mills, G., Moede, C., Stewart, I. D., van Vliet, J., Bechtel, B. (2022). Global map of Local Climate Zones (Version 1.0.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.6364594. © Matthias Demuzere et al. 2022, licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. The map is described in Demuzere et al. (2022), see [References](#references).
+- Changes to the LCZ map: it was clipped to the three cities, projected to the local UTM zone and resampled from about 100 m to 10 m before I received it. `modules/convert_data.py` aligns it with the Sentinel-2 grid where needed (nearest neighbour), and the maps in `docs/` show it in my own colours. The labels agree with the unfiltered map of version 1.0.0 (`lcz_v1.tif`, not the Gaussian-filtered `lcz_filter_v1.tif`) in 98.8-98.9 % of the pixels of each city; which release was used in the course is not recorded (all releases are CC BY 4.0). The map comes without any warranty. Thanks to its authors and to the WUDAPT contributors.
 
 ## References
 
@@ -363,5 +364,6 @@ Thanks to the organisers and lecturers of the BIP in Pavia and to my team: Sona,
 - He, K., Zhang, X., Ren, S., Sun, J. (2016). Deep Residual Learning for Image Recognition. CVPR 2016, 770-778.
 - Lin, T.-Y., Goyal, P., Girshick, R., He, K., Dollár, P. (2017). Focal Loss for Dense Object Detection. ICCV 2017, 2980-2988.
 - Stewart, I. D., Oke, T. R. (2012). Local Climate Zones for Urban Temperature Studies. Bulletin of the American Meteorological Society 93(12), 1879-1900. https://doi.org/10.1175/BAMS-D-11-00019.1
+- Demuzere, M., Kittner, J., Martilli, A., Mills, G., Moede, C., Stewart, I. D., van Vliet, J., Bechtel, B. (2022). A global map of local climate zones to support earth system modelling and urban-scale environmental science. Earth System Science Data 14, 3835-3873. https://doi.org/10.5194/essd-14-3835-2022
 - Demuzere, M., Kittner, J., Bechtel, B. (2021). LCZ Generator: A Web Application to Create Local Climate Zone Maps. Frontiers in Environmental Science 9:637455. https://doi.org/10.3389/fenvs.2021.637455
 - Iakubovskii, P. (2019). Segmentation Models Pytorch. https://github.com/qubvel-org/segmentation_models.pytorch

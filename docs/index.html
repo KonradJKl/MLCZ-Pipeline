@@ -46,8 +46,8 @@
     </dl>
     <figure class="hero-figure" id="hero-figure" hidden>
       <img alt="Berlin: Sentinel-2 true color, ground truth and prediction" width="1598" height="509">
-      <figcaption>Berlin: Sentinel-2 true color, LCZ Generator labels and the prediction of the current
-        model.</figcaption>
+      <figcaption>Berlin: Sentinel-2 true color, labels from the Global LCZ map and the prediction of the
+        current model.</figcaption>
     </figure>
   </div>
 </section>
@@ -141,9 +141,9 @@
         <p class="used">Used: 234 bands, resampled to 10&nbsp;m</p>
       </div>
       <div class="card source">
-        <h3>LCZ Generator</h3>
-        <p class="kicker">Labels, Demuzere et al. (2021)</p>
-        <p>LCZ maps at 100&nbsp;m, produced automatically and available worldwide, but not validated in the field.</p>
+        <h3>Global LCZ map</h3>
+        <p class="kicker">Labels, Demuzere et al. (2022)</p>
+        <p>LCZ map of the whole world at 100&nbsp;m, produced automatically, but not validated in the field.</p>
         <p class="used">Used: resampled to 10&nbsp;m</p>
       </div>
     </div>
@@ -247,7 +247,7 @@
 
     <h3 id="maps">City maps of the main model</h3>
     <p class="intro">The main model is the U-Net with ImageNet weights, trained on the training patches of all three
-      cities (see <a href="#experiments">Experiments</a>). Below are Sentinel-2 true color, the LCZ Generator labels, its
+      cities (see <a href="#experiments">Experiments</a>). Below are Sentinel-2 true color, the labels, its
       prediction and the errors for the same area. The maps are stitched from all patches of a city, whether they were
       used for training, validation or testing. Where patches overlap, the class with the highest summed probability
       wins.</p>
@@ -525,15 +525,23 @@ streamlit run app.py</code></pre>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>Our team project as Group&nbsp;2 (Sona, Sohane, Pegah, Mahila, Samy and me, Konrad Kloska) at the Erasmus+ BIP &ldquo;Machine
-      Learning for Earth Observation Data Processing and Fusion&rdquo;, Pavia, June 2025.
+    <p>The code was developed as a result of our team project as Group&nbsp;2 (Sona, Sohane, Pegah, Mahila, Samy and
+      me, Konrad Kloska) at the Erasmus+ BIP &ldquo;Machine Learning for Earth Observation Data Processing and
+      Fusion&rdquo;, Pavia, June 2025, and extended by me afterwards.
       Code on <a href="https://github.com/KonradJKl/MLCZ-Pipeline">GitHub</a>.</p>
     <p id="export-info">The city maps have not been exported yet.</p>
-    <p>Contains modified Copernicus Sentinel data 2025. Project carried out using ORIGINAL PRISMA Products,
-      &copy; Italian Space Agency (ASI), delivered under an ASI license to use. This page shows no PRISMA imagery,
-      only Sentinel-2 images and maps derived from the models.</p>
-    <p>Labels from the LCZ Generator: Demuzere et al. (2021), Front. Environ. Sci. 9:637455,
-      <a href="https://doi.org/10.3389/fenvs.2021.637455">https://doi.org/10.3389/fenvs.2021.637455</a>.</p>
+    <p>Contains modified Copernicus Sentinel data (acquisition date not recorded; data obtained in May 2025).</p>
+    <p>Project carried out using ORIGINAL PRISMA Products - &copy; Italian Space Agency (ASI); the Products have been
+      delivered under an ASI License to Use. This page shows no PRISMA imagery, only Sentinel-2 images, the LCZ labels
+      and maps derived from the models.</p>
+    <p>LCZ labels: Global map of Local Climate Zones, version 1.0.0 (unfiltered map), &copy; Matthias Demuzere et al. 2022,
+      <a href="https://doi.org/10.5281/zenodo.6364594">https://doi.org/10.5281/zenodo.6364594</a>, licensed under
+      <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, described in Demuzere et al. (2022),
+      Earth Syst. Sci. Data 14, 3835&ndash;3873,
+      <a href="https://doi.org/10.5194/essd-14-3835-2022">https://doi.org/10.5194/essd-14-3835-2022</a>.
+      The map was clipped to the three cities, projected to UTM and resampled to 10&nbsp;m before I received it, and
+      is shown here in my own colours. It comes without any warranty. Thanks to its authors and to the WUDAPT
+      contributors.</p>
   </div>
 </footer>
 </body>
